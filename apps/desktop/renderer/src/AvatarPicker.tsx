@@ -1,9 +1,5 @@
-import {
-  ColorSelector,
-  ColorSelectorItem,
-  ColorSelectorList
-} from "@scope-bot/ui/components/motion/color-selector.tsx"
 import type { AgentFace, AgentShape } from "@scope-bot/domain"
+import { ColorSelector, ColorSelectorItem, ColorSelectorList } from "@scope-bot/ui/components/motion/color-selector.tsx"
 import { Check } from "lucide-react"
 import type { ReactNode } from "react"
 import { Mascot } from "./Mascot.tsx"
@@ -24,7 +20,11 @@ interface AvatarPickerProps {
 
 const titleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
-const Section = ({ title, current, children }: {
+const Section = ({
+  title,
+  current,
+  children
+}: {
   readonly title: string
   readonly current: string
   readonly children: ReactNode
@@ -39,6 +39,7 @@ const Section = ({ title, current, children }: {
 )
 
 interface OptionProps {
+  readonly group: string
   readonly label: string
   readonly selected: boolean
   readonly compact: boolean
@@ -46,17 +47,13 @@ interface OptionProps {
   readonly children: ReactNode
 }
 
-const Option = ({ label, selected, compact, onSelect, children }: OptionProps) => (
-  <button
-    type="button"
-    role="radio"
-    aria-checked={selected}
-    aria-label={label}
-    onClick={onSelect}
-    className={`relative flex flex-col items-center gap-1.5 rounded-xl outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring ${
+const Option = ({ group, label, selected, compact, onSelect, children }: OptionProps) => (
+  <label
+    className={`relative flex cursor-pointer flex-col items-center gap-1.5 rounded-xl transition-colors duration-150 has-focus-visible:ring-2 has-focus-visible:ring-ring ${
       compact ? "py-2" : "px-1 py-3"
     } ${selected ? "bg-accent" : "hover:bg-muted"}`}
   >
+    <input type="radio" name={group} aria-label={label} checked={selected} onChange={onSelect} className="sr-only" />
     {children}
     {!compact && <span className="text-xs text-muted-foreground">{label}</span>}
     {selected && !compact && (
@@ -64,7 +61,7 @@ const Option = ({ label, selected, compact, onSelect, children }: OptionProps) =
         <Check className="size-2.5" strokeWidth={3} />
       </span>
     )}
-  </button>
+  </label>
 )
 
 export const AvatarPicker = ({ value, onChange, compact = false }: AvatarPickerProps) => {
@@ -73,10 +70,11 @@ export const AvatarPicker = ({ value, onChange, compact = false }: AvatarPickerP
   return (
     <div className="flex flex-col gap-6">
       <Section title="Shape" current={titleCase(value.shape)}>
-        <div role="radiogroup" aria-label="Shape" className="grid grid-cols-4 gap-1">
+        <fieldset aria-label="Shape" className="grid grid-cols-4 gap-1">
           {avatarShapes.map((shape) => (
             <Option
               key={shape}
+              group="avatar-shape"
               label={titleCase(shape)}
               selected={shape === value.shape}
               compact={compact}
@@ -85,14 +83,15 @@ export const AvatarPicker = ({ value, onChange, compact = false }: AvatarPickerP
               <Mascot size={thumbnail} shape={shape} face={value.face} color={value.color} />
             </Option>
           ))}
-        </div>
+        </fieldset>
       </Section>
 
       <Section title="Face" current={titleCase(value.face)}>
-        <div role="radiogroup" aria-label="Face" className="grid grid-cols-4 gap-1">
+        <fieldset aria-label="Face" className="grid grid-cols-4 gap-1">
           {avatarFaces.map((face) => (
             <Option
               key={face}
+              group="avatar-face"
               label={titleCase(face)}
               selected={face === value.face}
               compact={compact}
@@ -101,13 +100,10 @@ export const AvatarPicker = ({ value, onChange, compact = false }: AvatarPickerP
               <Mascot size={thumbnail} shape={value.shape} face={face} color={value.color} />
             </Option>
           ))}
-        </div>
+        </fieldset>
       </Section>
 
-      <Section
-        title="Colour"
-        current={avatarColors.find((option) => option.value === value.color)?.label ?? ""}
-      >
+      <Section title="Colour" current={avatarColors.find((option) => option.value === value.color)?.label ?? ""}>
         <ColorSelector value={value.color} onValueChange={(color) => onChange({ ...value, color })} aria-label="Colour">
           <ColorSelectorList className="flex flex-wrap gap-2">
             {avatarColors.map((option) => (

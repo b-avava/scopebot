@@ -35,8 +35,7 @@ export class BusinessApi extends HttpApiGroup.make("business")
       success: BusinessProfile
     })
   )
-  .prefix("/business")
-{}
+  .prefix("/business") {}
 
 export class AgentsApi extends HttpApiGroup.make("agents")
   .add(
@@ -58,8 +57,7 @@ export class AgentsApi extends HttpApiGroup.make("agents")
       error: AgentNotFound
     })
   )
-  .prefix("/agents")
-{}
+  .prefix("/agents") {}
 
 export class ChatApi extends HttpApiGroup.make("chat")
   .add(
@@ -90,13 +88,11 @@ export class ChatApi extends HttpApiGroup.make("chat")
       error: AgentNotFound
     })
   )
-  .prefix("/agents")
-{}
+  .prefix("/agents") {}
 
 export class Api extends HttpApi.make("scope-bot")
   .add(SystemApi)
   .add(BusinessApi)
   .add(AgentsApi)
   .add(ChatApi)
-  .annotateMerge(OpenApi.annotations({ title: "Scope Bot API" }))
-{}
+  .annotateMerge(OpenApi.annotations({ title: "Scope Bot API" })) {}

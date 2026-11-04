@@ -1,14 +1,6 @@
 import { useEffect, useId, useRef } from "react"
 
-export type ClayShape =
-  | "circle"
-  | "pebble"
-  | "squircle"
-  | "capsule"
-  | "triangle"
-  | "hexagon"
-  | "cloud"
-  | "droplet"
+export type ClayShape = "circle" | "pebble" | "squircle" | "capsule" | "triangle" | "hexagon" | "cloud" | "droplet"
 
 export type ClayFace =
   | "neutral"
@@ -43,8 +35,8 @@ const roundedPolygon = (points: ReadonlyArray<Point>, radius: number) => {
     return { from: toward(px, py), control: [x, y] as const, to: toward(nx, ny) }
   }
   const corners = points.map((_, index) => corner(index))
-  const path = corners.map((c, index) =>
-    `${index === 0 ? "M" : "L"}${c.from.join(" ")}Q${c.control.join(" ")} ${c.to.join(" ")}`
+  const path = corners.map(
+    (c, index) => `${index === 0 ? "M" : "L"}${c.from.join(" ")}Q${c.control.join(" ")} ${c.to.join(" ")}`
   )
   return `${path.join("")}Z`
 }
@@ -54,9 +46,27 @@ const outlines: Record<ClayShape, string> = {
   pebble: "M56 16C84 8 110 26 112 56C114 84 92 102 62 104C34 106 8 94 8 66C8 40 30 23 56 16Z",
   squircle: "M60 10C98 10 110 22 110 60C110 98 98 110 60 110C22 110 10 98 10 60C10 22 22 10 60 10Z",
   capsule: "M38 30H82A30 30 0 0 1 82 90H38A30 30 0 0 1 38 30Z",
-  triangle: roundedPolygon([[60, 10], [114, 104], [6, 104]], 20),
-  hexagon: roundedPolygon([[34, 14], [86, 14], [112, 60], [86, 106], [34, 106], [8, 60]], 13),
-  cloud: "M34 96C18 96 8 84 8 71C8 58 17 49 29 47C30 31 43 20 59 20C72 20 83 28 87 41C102 42 112 54 112 68C112 84 100 96 86 96Z",
+  triangle: roundedPolygon(
+    [
+      [60, 10],
+      [114, 104],
+      [6, 104]
+    ],
+    20
+  ),
+  hexagon: roundedPolygon(
+    [
+      [34, 14],
+      [86, 14],
+      [112, 60],
+      [86, 106],
+      [34, 106],
+      [8, 60]
+    ],
+    13
+  ),
+  cloud:
+    "M34 96C18 96 8 84 8 71C8 58 17 49 29 47C30 31 43 20 59 20C72 20 83 28 87 41C102 42 112 54 112 68C112 84 100 96 86 96Z",
   droplet: "M60 6C60 6 102 52 102 76C102 98 83 113 60 113C37 113 18 98 18 76C18 52 60 6 60 6Z"
 }
 
@@ -96,9 +106,18 @@ const faces: Record<ClayFace, readonly [Eye, Eye]> = {
   angry: pair(13, 2, 14, 5, 18, true),
   sad: pair(13, 2, 6, 15, 18, true),
   scared: pair(13, 0, 15, 21),
-  suspicious: [{ x: -13, y: 0, width: 12, height: 3 }, { x: 13, y: 0, width: 6, height: 6 }],
-  confused: [{ x: -13, y: 0, width: 5, height: 14, rotate: -10 }, { x: 13, y: 0, width: 13, height: 4, rotate: 15 }],
-  curious: [{ x: -12, y: 2, width: 7, height: 12, rotate: 8 }, { x: 13, y: -1, width: 9, height: 17, rotate: 8 }],
+  suspicious: [
+    { x: -13, y: 0, width: 12, height: 3 },
+    { x: 13, y: 0, width: 6, height: 6 }
+  ],
+  confused: [
+    { x: -13, y: 0, width: 5, height: 14, rotate: -10 },
+    { x: 13, y: 0, width: 13, height: 4, rotate: 15 }
+  ],
+  curious: [
+    { x: -12, y: 2, width: 7, height: 12, rotate: 8 },
+    { x: 13, y: -1, width: 9, height: 17, rotate: 8 }
+  ],
   proud: pair(14, -6, 13, 4, -6),
   shy: pair(12, 10, 6, 11, 12),
   unimpressed: pair(14, 0, 14, 3),
@@ -111,7 +130,9 @@ const channels = (hex: string) => {
 }
 
 const mix = (hex: string, target: number, amount: number) =>
-  `rgb(${channels(hex).map((channel) => Math.round(channel + (target - channel) * amount)).join(" ")})`
+  `rgb(${channels(hex)
+    .map((channel) => Math.round(channel + (target - channel) * amount))
+    .join(" ")})`
 
 const eyeColor = (hex: string) => {
   const [red, green, blue] = channels(hex)
@@ -146,8 +167,7 @@ const useLiveFace = (
       state.x += state.vx
       state.y += state.vy
       group.setAttribute("transform", `translate(${state.x.toFixed(2)} ${state.y.toFixed(2)})`)
-      const settled = Math.hypot(state.tx - state.x, state.ty - state.y) < 0.02 &&
-        Math.hypot(state.vx, state.vy) < 0.02
+      const settled = Math.hypot(state.tx - state.x, state.ty - state.y) < 0.02 && Math.hypot(state.vx, state.vy) < 0.02
       frame = settled ? 0 : requestAnimationFrame(step)
     }
     const wake = () => {
@@ -157,8 +177,11 @@ const useLiveFace = (
     const area = element.closest<HTMLElement>("[data-watch-area]") ?? element
     const look = (event: PointerEvent) => {
       const bounds = area.getBoundingClientRect()
-      const inside = event.clientX >= bounds.left && event.clientX <= bounds.right &&
-        event.clientY >= bounds.top && event.clientY <= bounds.bottom
+      const inside =
+        event.clientX >= bounds.left &&
+        event.clientX <= bounds.right &&
+        event.clientY >= bounds.top &&
+        event.clientY <= bounds.bottom
       if (inside) {
         const box = element.getBoundingClientRect()
         const dx = event.clientX - (box.left + box.width / 2)
@@ -281,11 +304,8 @@ export function ClayAvatar({
       </g>
 
       <g ref={faceGroup}>
-        {faces[face].map((eye, index) => (
-          <g
-            key={index}
-            transform={`translate(${centreX + eye.x} ${centreY + eye.y}) rotate(${eye.rotate ?? 0})`}
-          >
+        {faces[face].map((eye) => (
+          <g key={eye.x} transform={`translate(${centreX + eye.x} ${centreY + eye.y}) rotate(${eye.rotate ?? 0})`}>
             <rect
               x={-eye.width / 2}
               y={-eye.height / 2}

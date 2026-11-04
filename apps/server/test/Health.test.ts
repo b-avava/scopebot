@@ -9,9 +9,10 @@ const makeClient = HttpApiTest.groups(Api, ["system"])
 
 layer(Layer.mergeAll(SystemApiHandlers, HttpServer.layerServices))("SystemApi", (it) => {
   it.effect("reports a healthy server", () =>
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const client = yield* makeClient
       const health = yield* client.system.health()
       assert.deepStrictEqual(health, { status: "ok" })
-    }))
+    })
+  )
 })

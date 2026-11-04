@@ -12,7 +12,7 @@ const agent: Agent = {
 
 describe("Store", () => {
   it.effect("keeps data in a file across restarts", () =>
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
       const directory = yield* fs.makeTempDirectoryScoped()
@@ -25,10 +25,11 @@ describe("Store", () => {
       )
 
       assert.deepStrictEqual(Option.getOrNull(found), agent)
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)))
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
+  )
 
   it.effect("upgrades a file written by an earlier version", () =>
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
       const directory = yield* fs.makeTempDirectoryScoped()
@@ -36,18 +37,20 @@ describe("Store", () => {
       yield* fs.writeFileString(
         filePath,
         JSON.stringify({
-          agents: [{
-            id: "old",
-            name: "Tamar",
-            job: "Sales",
-            color: "#000000",
-            shape: "tooth",
-            face: "happy",
-            instructions: "Keep me",
-            model: "",
-            active: false,
-            createdAt: "2026-11-04T00:00:00.000Z"
-          }],
+          agents: [
+            {
+              id: "old",
+              name: "Tamar",
+              job: "Sales",
+              color: "#000000",
+              shape: "tooth",
+              face: "happy",
+              instructions: "Keep me",
+              model: "",
+              active: false,
+              createdAt: "2026-11-04T00:00:00.000Z"
+            }
+          ],
           messages: [],
           actions: []
         })
@@ -61,5 +64,6 @@ describe("Store", () => {
       assert.strictEqual(upgraded?.shape, "circle")
       assert.strictEqual(upgraded?.face, "happy")
       assert.strictEqual(upgraded?.permissions.offerDiscounts, "approve")
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)))
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
+  )
 })

@@ -190,14 +190,6 @@ export const defaultSettings = (input: CreateAgent): AgentSettings => ({
   escalation: { onComplaint: true, onHumanRequest: true, onUnknownAnswer: true }
 })
 
-export class AgentNotFound extends Schema.TaggedError<AgentNotFound>()(
-  "AgentNotFound",
-  {},
-  { httpApiStatus: 404 }
-) {}
+export class AgentNotFound extends Schema.TaggedError<AgentNotFound>()("AgentNotFound", {}, { httpApiStatus: 404 }) {}
 
-export class AgentPaused extends Schema.TaggedError<AgentPaused>()(
-  "AgentPaused",
-  {},
-  { httpApiStatus: 409 }
-) {}
+export class AgentPaused extends Schema.TaggedError<AgentPaused>()("AgentPaused", {}, { httpApiStatus: 409 }) {}
