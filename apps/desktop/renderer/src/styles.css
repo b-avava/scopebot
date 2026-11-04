@@ -1,0 +1,10 @@
+@import "@scope-bot/ui/styles.css";
+
+/* The window has no native title bar, so these areas move it. */
+.window-drag {
+  -webkit-app-region: drag;
+}
+
+.window-no-drag {
+  -webkit-app-region: no-drag;
+}

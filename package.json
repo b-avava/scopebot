@@ -1,0 +1,26 @@
+{
+  "name": "scope-bot",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @scope-bot/server --filter @scope-bot/desktop dev",
+    "dev:server": "pnpm --filter @scope-bot/server dev",
+    "dev:desktop": "pnpm --filter @scope-bot/desktop dev",
+    "start": "pnpm --filter @scope-bot/server start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

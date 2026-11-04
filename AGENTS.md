@@ -1,0 +1,1 @@
+Read README.md first and follow the Working with AI section

@@ -1,0 +1,32 @@
+packages:
+  - apps/*
+  - packages/*
+
+# All Effect packages are released in lockstep and must stay on the same version.
+catalog:
+  "@anthropic-ai/sdk": ^1.4.0
+  "@effect/platform-node": 4.1.2
+  "@effect/vitest": 4.1.2
+  "@fontsource-variable/google-sans": ^5.3.2
+  "@tailwindcss/vite": ^4.3.4
+  "@types/react": ^19.0.0
+  "@types/react-dom": ^19.0.0
+  "@vitejs/plugin-react": ^6.2.1
+  clsx: ^2.1.1
+  "@types/node": ^24.0.0
+  effect: 4.1.2
+  electron: ^45.2.2
+  electron-vite: ^6.0.0
+  lucide-react: ^1.67.0
+  motion: ^14.9.0
+  react: ^19.3.1
+  react-dom: ^19.3.1
+  tailwind-merge: ^3.7.0
+  tailwindcss: ^4.3.4
+  typescript: ^7.0.2
+  vite: ^8.3.5
+  vitest: ^5.1.0
+
+minimumReleaseAgeExclude:
+  - electron@45.2.2
+  - lucide-react@1.67.0
