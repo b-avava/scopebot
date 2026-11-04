@@ -1,13 +1,13 @@
+import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
-import { resolve } from "node:path"
 
 const root = import.meta.dirname
 
 // Terminals inside Electron-based tools can leak this variable, and it makes
 // the app start as plain Node with no `electron` API.
-delete process.env["ELECTRON_RUN_AS_NODE"]
+delete process.env.ELECTRON_RUN_AS_NODE
 
 export default defineConfig({
   main: {

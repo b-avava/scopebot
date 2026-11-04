@@ -1,3 +1,4 @@
+import type { Agent } from "@scope-bot/domain"
 import {
   AnimatedSidebar,
   AnimatedSidebarContent,
@@ -11,7 +12,6 @@ import {
   AnimatedSidebarMenuItem
 } from "@scope-bot/ui/components/motion/animated-sidebar.tsx"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
-import type { Agent } from "@scope-bot/domain"
 import { Building2, ChartColumn, Check, Moon, Plus, ScrollText, Sun } from "lucide-react"
 import type { ServerStatus, Theme } from "../../preload/bridge.ts"
 import { Mascot } from "./Mascot.tsx"
@@ -56,11 +56,7 @@ export const AppSidebar = ({
         <AnimatedSidebarGroupContent>
           <AnimatedSidebarMenu>
             <AnimatedSidebarMenuItem>
-              <AnimatedSidebarMenuButton
-                icon={<Plus className="size-4" />}
-                isActive={hiring}
-                onSelect={onHire}
-              >
+              <AnimatedSidebarMenuButton icon={<Plus className="size-4" />} isActive={hiring} onSelect={onHire}>
                 {team.length === 0 ? "Hire your first employee" : "Hire an employee"}
               </AnimatedSidebarMenuButton>
             </AnimatedSidebarMenuItem>
@@ -98,39 +94,33 @@ export const AppSidebar = ({
         </AnimatedSidebarGroupContent>
       </AnimatedSidebarGroup>
 
-      {team.length > 0
-        ? (
-          <AnimatedSidebarGroup>
-            <AnimatedSidebarGroupLabel>Team</AnimatedSidebarGroupLabel>
-            <AnimatedSidebarGroupContent>
-              <AnimatedSidebarMenu>
-                {team.map((employee) => (
-                  <AnimatedSidebarMenuItem key={employee.id}>
-                    <AnimatedSidebarMenuButton
-                      icon={<Mascot size={20} shape={employee.shape} face={employee.face} color={employee.color} />}
-                      isActive={employee.id === activeId}
-                      onSelect={() => onOpenEmployee(employee.id)}
-                    >
-                      {employee.name}
-                    </AnimatedSidebarMenuButton>
-                  </AnimatedSidebarMenuItem>
-                ))}
-              </AnimatedSidebarMenu>
-            </AnimatedSidebarGroupContent>
-          </AnimatedSidebarGroup>
-        )
-        : (
-          <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            No employees yet
-          </p>
-        )}
+      {team.length > 0 ? (
+        <AnimatedSidebarGroup>
+          <AnimatedSidebarGroupLabel>Team</AnimatedSidebarGroupLabel>
+          <AnimatedSidebarGroupContent>
+            <AnimatedSidebarMenu>
+              {team.map((employee) => (
+                <AnimatedSidebarMenuItem key={employee.id}>
+                  <AnimatedSidebarMenuButton
+                    icon={<Mascot size={20} shape={employee.shape} face={employee.face} color={employee.color} />}
+                    isActive={employee.id === activeId}
+                    onSelect={() => onOpenEmployee(employee.id)}
+                  >
+                    {employee.name}
+                  </AnimatedSidebarMenuButton>
+                </AnimatedSidebarMenuItem>
+              ))}
+            </AnimatedSidebarMenu>
+          </AnimatedSidebarGroupContent>
+        </AnimatedSidebarGroup>
+      ) : (
+        <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">No employees yet</p>
+      )}
     </AnimatedSidebarContent>
 
     <AnimatedSidebarFooter className="flex flex-row items-center justify-between gap-2 px-4 py-3">
       <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
-        <span
-          className={`size-2 rounded-full ${server?.state === "online" ? "bg-foreground" : "bg-destructive"}`}
-        />
+        <span className={`size-2 rounded-full ${server?.state === "online" ? "bg-foreground" : "bg-destructive"}`} />
         {serverLabel(server)}
       </span>
       <Button

@@ -4,7 +4,7 @@ import { OpenAiCompatibleChatModel } from "./OpenAiCompatibleChatModel.ts"
 
 /** Picks the model provider from `LLM_PROVIDER`. */
 export const ConfiguredChatModel = Layer.unwrap(
-  Effect.gen(function*() {
+  Effect.gen(function* () {
     const provider = yield* Config.String("LLM_PROVIDER").pipe(Config.withDefault("anthropic"))
 
     if (provider === "anthropic") return AnthropicChatModel

@@ -6,7 +6,7 @@ import { HttpApiBuilder } from "effect/http-api"
 export const SystemApiHandlers = HttpApiBuilder.group(
   Api,
   "system",
-  Effect.fn(function*(handlers) {
+  Effect.fn(function* (handlers) {
     return handlers.handleAll({
       health: () => Effect.succeed({ status: "ok" as const })
     })
@@ -16,7 +16,7 @@ export const SystemApiHandlers = HttpApiBuilder.group(
 export const BusinessApiHandlers = HttpApiBuilder.group(
   Api,
   "business",
-  Effect.fn(function*(handlers) {
+  Effect.fn(function* (handlers) {
     const agents = yield* Agents
 
     return handlers.handleAll({
@@ -29,7 +29,7 @@ export const BusinessApiHandlers = HttpApiBuilder.group(
 export const AgentsApiHandlers = HttpApiBuilder.group(
   Api,
   "agents",
-  Effect.fn(function*(handlers) {
+  Effect.fn(function* (handlers) {
     const agents = yield* Agents
 
     return handlers.handleAll({
@@ -44,7 +44,7 @@ export const AgentsApiHandlers = HttpApiBuilder.group(
 export const ChatApiHandlers = HttpApiBuilder.group(
   Api,
   "chat",
-  Effect.fn(function*(handlers) {
+  Effect.fn(function* (handlers) {
     const chat = yield* AgentChat
 
     return handlers.handleAll({

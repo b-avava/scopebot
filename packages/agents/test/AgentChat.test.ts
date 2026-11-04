@@ -20,12 +20,14 @@ const echoLayer = (requests: Array<ChatRequest> = []) =>
     return Effect.succeed({ text: "Hello!", model: request.model, inputTokens: 12, outputTokens: 3 })
   })
 
-const hire = Agents.use((agents) => agents.create({ name: "Nino", job: "Front desk", color: "#000", shape: "squircle", face: "neutral" }))
+const hire = Agents.use((agents) =>
+  agents.create({ name: "Nino", job: "Front desk", color: "#000", shape: "squircle", face: "neutral" })
+)
 
 describe("AgentChat", () => {
   it.effect("answers, keeps the conversation and audits the reply", () => {
     const requests: Array<ChatRequest> = []
-    return Effect.gen(function*() {
+    return Effect.gen(function* () {
       const chat = yield* AgentChat
       const agent = yield* hire
 
@@ -33,7 +35,10 @@ describe("AgentChat", () => {
       const sent = yield* chat.send(agent.id, "Are you open?")
 
       assert.strictEqual(sent.reply?.text, "Hello!")
-      assert.deepStrictEqual(requests[1]?.turns.map((turn) => turn.role), ["user", "assistant", "user"])
+      assert.deepStrictEqual(
+        requests[1]?.turns.map((turn) => turn.role),
+        ["user", "assistant", "user"]
+      )
       assert.strictEqual(requests[0]?.turns[0]?.text, "Hi")
 
       const messages = yield* chat.messages(agent.id)
@@ -49,7 +54,7 @@ describe("AgentChat", () => {
 
   it.effect("uses the agent's settings", () => {
     const requests: Array<ChatRequest> = []
-    return Effect.gen(function*() {
+    return Effect.gen(function* () {
       const agents = yield* Agents
       const chat = yield* AgentChat
       const agent = yield* hire
@@ -85,7 +90,7 @@ describe("AgentChat", () => {
 
   it.effect("does not answer while paused", () => {
     const requests: Array<ChatRequest> = []
-    return Effect.gen(function*() {
+    return Effect.gen(function* () {
       const agents = yield* Agents
       const chat = yield* AgentChat
       const agent = yield* hire
@@ -100,7 +105,7 @@ describe("AgentChat", () => {
   })
 
   it.effect("audits a failed reply and keeps the customer's message", () =>
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const chat = yield* AgentChat
       const agent = yield* hire
 
@@ -109,17 +114,19 @@ describe("AgentChat", () => {
       assert.strictEqual(error._tag, "ModelFailed")
       assert.strictEqual((yield* chat.messages(agent.id)).length, 1)
       assert.strictEqual((yield* chat.actions(agent.id))[0]?.status, "failed")
-    }).pipe(Effect.provide(makeLayer(() => Effect.fail(new ModelFailed({ reason: "timeout" }))))))
+    }).pipe(Effect.provide(makeLayer(() => Effect.fail(new ModelFailed({ reason: "timeout" })))))
+  )
 
   it.effect("reports an unknown agent", () =>
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const chat = yield* AgentChat
       const error = yield* chat.send(AgentId.make("missing"), "Hi").pipe(Effect.flip)
       assert.strictEqual(error._tag, "AgentNotFound")
-    }).pipe(Effect.provide(echoLayer())))
+    }).pipe(Effect.provide(echoLayer()))
+  )
 
   it.effect("removes an agent with its conversation", () =>
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const agents = yield* Agents
       const chat = yield* AgentChat
       const agent = yield* hire
@@ -129,11 +136,12 @@ describe("AgentChat", () => {
 
       assert.strictEqual((yield* agents.list).length, 0)
       assert.strictEqual((yield* chat.messages(agent.id).pipe(Effect.flip))._tag, "AgentNotFound")
-    }).pipe(Effect.provide(echoLayer())))
+    }).pipe(Effect.provide(echoLayer()))
+  )
 
   it.effect("sends the away message outside working hours without calling the model", () => {
     const requests: Array<ChatRequest> = []
-    return Effect.gen(function*() {
+    return Effect.gen(function* () {
       const agents = yield* Agents
       const chat = yield* AgentChat
       const agent = yield* hire
@@ -152,7 +160,7 @@ describe("AgentChat", () => {
 
   it.effect("hands the chat to a human at the daily limit and stays silent", () => {
     const requests: Array<ChatRequest> = []
-    return Effect.gen(function*() {
+    return Effect.gen(function* () {
       const agents = yield* Agents
       const chat = yield* AgentChat
       const agent = yield* hire
@@ -170,7 +178,7 @@ describe("AgentChat", () => {
   })
 
   it.effect("hands off when the model asks to, and resumes when told", () =>
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const chat = yield* AgentChat
       const agent = yield* hire
 
@@ -182,14 +190,19 @@ describe("AgentChat", () => {
       assert.isNull((yield* chat.resume(agent.id)).escalation)
       const next = yield* chat.send(agent.id, "Hello")
       assert.strictEqual(next.outcome, "escalated")
-    }).pipe(Effect.provide(makeLayer((request) =>
-      Effect.succeed({
-        text: "A colleague will help you. [[HANDOFF: upset customer]]",
-        model: request.model,
-        inputTokens: 1,
-        outputTokens: 1
-      })
-    ))))
+    }).pipe(
+      Effect.provide(
+        makeLayer((request) =>
+          Effect.succeed({
+            text: "A colleague will help you. [[HANDOFF: upset customer]]",
+            model: request.model,
+            inputTokens: 1,
+            outputTokens: 1
+          })
+        )
+      )
+    )
+  )
 
   it("keeps customer content out of the rules", () => {
     const agent = {

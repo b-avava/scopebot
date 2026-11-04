@@ -1,3 +1,4 @@
+import type { CreateAgent } from "@scope-bot/domain"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Input } from "@scope-bot/ui/components/motion/input.tsx"
 import {
@@ -7,9 +8,8 @@ import {
   SelectTrigger,
   SelectValue
 } from "@scope-bot/ui/components/motion/select.tsx"
-import type { CreateAgent } from "@scope-bot/domain"
 import { useState } from "react"
-import { AvatarPicker, type AvatarLook } from "./AvatarPicker.tsx"
+import { type AvatarLook, AvatarPicker } from "./AvatarPicker.tsx"
 import { LiveMascot, Mascot, watchArea } from "./Mascot.tsx"
 import { defaultLook, jobs } from "./sampleData.ts"
 import { TitleBar } from "./TitleBar.tsx"
@@ -61,7 +61,11 @@ export const HireScreen = ({ onHire }: HireScreenProps) => {
                   <SelectValue placeholder="Choose a job" />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobs.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                  {jobs.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -71,7 +75,11 @@ export const HireScreen = ({ onHire }: HireScreenProps) => {
             {trimmedName === "" ? "Hire" : `Hire ${trimmedName}`}
           </Button>
 
-          {error !== null && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {error !== null && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
         </div>
 
         <aside className="w-[min(440px,48%)] shrink-0 overflow-y-auto border-l p-5">

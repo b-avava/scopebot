@@ -5,8 +5,8 @@ import {
   BusinessProfile,
   ChatMessage,
   defaultSettings,
-  emptyBusinessProfile,
-  Escalation
+  Escalation,
+  emptyBusinessProfile
 } from "@scope-bot/domain"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema, Semaphore } from "effect"
 
@@ -24,22 +24,31 @@ const emptyData: Data = { business: emptyBusinessProfile, agents: [], messages: 
 const decodeData = Schema.decodeUnknownEffect(Data)
 const encodeData = Schema.encodeEffect(Data)
 
-const validShapes: ReadonlyArray<string> = ["circle", "pebble", "squircle", "capsule", "triangle", "hexagon", "cloud", "droplet"]
+const validShapes: ReadonlyArray<string> = [
+  "circle",
+  "pebble",
+  "squircle",
+  "capsule",
+  "triangle",
+  "hexagon",
+  "cloud",
+  "droplet"
+]
 
 /** Brings a file written by an earlier version up to the current format. */
 const upgrade = (raw: Record<string, unknown>) => ({
   ...emptyData,
   ...raw,
-  agents: (Array.isArray(raw["agents"]) ? raw["agents"] : []).map((stored: Record<string, unknown>) => ({
+  agents: (Array.isArray(raw.agents) ? raw.agents : []).map((stored: Record<string, unknown>) => ({
     ...defaultSettings({
-      name: String(stored["name"]),
-      job: String(stored["job"]),
-      color: String(stored["color"]),
+      name: String(stored.name),
+      job: String(stored.job),
+      color: String(stored.color),
       shape: "circle",
       face: "neutral"
     }),
     ...stored,
-    shape: validShapes.includes(String(stored["shape"])) ? stored["shape"] : "circle"
+    shape: validShapes.includes(String(stored.shape)) ? stored.shape : "circle"
   }))
 })
 
@@ -48,22 +57,25 @@ const upgrade = (raw: Record<string, unknown>) => ({
  * until PostgreSQL is available (see docs/adr/0004). Only this service knows
  * how data is stored.
  */
-export class Store extends Context.Service<Store, {
-  readonly business: Effect.Effect<BusinessProfile>
-  saveBusiness(business: BusinessProfile): Effect.Effect<void>
-  readonly agents: Effect.Effect<ReadonlyArray<Agent>>
-  findAgent(id: AgentId): Effect.Effect<Option.Option<Agent>>
-  saveAgent(agent: Agent): Effect.Effect<void>
-  /** Also removes the agent's messages, actions and escalations. */
-  removeAgent(id: AgentId): Effect.Effect<void>
-  messages(agentId: AgentId): Effect.Effect<ReadonlyArray<ChatMessage>>
-  appendMessage(message: ChatMessage): Effect.Effect<void>
-  actions(agentId: AgentId): Effect.Effect<ReadonlyArray<AgentAction>>
-  appendAction(action: AgentAction): Effect.Effect<void>
-  openEscalation(agentId: AgentId): Effect.Effect<Option.Option<Escalation>>
-  appendEscalation(escalation: Escalation): Effect.Effect<void>
-  resolveEscalation(agentId: AgentId, resolvedAt: string): Effect.Effect<void>
-}>()("@scope-bot/db/Store") {
+export class Store extends Context.Service<
+  Store,
+  {
+    readonly business: Effect.Effect<BusinessProfile>
+    saveBusiness(business: BusinessProfile): Effect.Effect<void>
+    readonly agents: Effect.Effect<ReadonlyArray<Agent>>
+    findAgent(id: AgentId): Effect.Effect<Option.Option<Agent>>
+    saveAgent(agent: Agent): Effect.Effect<void>
+    /** Also removes the agent's messages, actions and escalations. */
+    removeAgent(id: AgentId): Effect.Effect<void>
+    messages(agentId: AgentId): Effect.Effect<ReadonlyArray<ChatMessage>>
+    appendMessage(message: ChatMessage): Effect.Effect<void>
+    actions(agentId: AgentId): Effect.Effect<ReadonlyArray<AgentAction>>
+    appendAction(action: AgentAction): Effect.Effect<void>
+    openEscalation(agentId: AgentId): Effect.Effect<Option.Option<Escalation>>
+    appendEscalation(escalation: Escalation): Effect.Effect<void>
+    resolveEscalation(agentId: AgentId, resolvedAt: string): Effect.Effect<void>
+  }
+>()("@scope-bot/db/Store") {
   static readonly layerMemory = Layer.effect(
     Store,
     Effect.suspend(() => make(emptyData, () => Effect.void))
@@ -72,7 +84,7 @@ export class Store extends Context.Service<Store, {
   static readonly layerFile = (filePath: string) =>
     Layer.effect(
       Store,
-      Effect.gen(function*() {
+      Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const path = yield* Path.Path
 
@@ -80,9 +92,9 @@ export class Store extends Context.Service<Store, {
 
         const initial = (yield* fs.exists(filePath))
           ? yield* fs.readFileString(filePath).pipe(
-            Effect.map((json) => upgrade(JSON.parse(json))),
-            Effect.flatMap(decodeData)
-          )
+              Effect.map((json) => upgrade(JSON.parse(json))),
+              Effect.flatMap(decodeData)
+            )
           : emptyData
 
         const temporaryPath = `${filePath}.tmp`
@@ -100,7 +112,7 @@ export class Store extends Context.Service<Store, {
 }
 
 const make = (initial: Data, persist: (data: Data) => Effect.Effect<void>) =>
-  Effect.gen(function*() {
+  Effect.gen(function* () {
     const lock = yield* Semaphore.make(1)
     let data = initial
 
@@ -109,9 +121,13 @@ const make = (initial: Data, persist: (data: Data) => Effect.Effect<void>) =>
         lock,
         Effect.suspend(() => {
           const next = change(data)
-          return persist(next).pipe(Effect.tap(() => Effect.sync(() => {
-            data = next
-          })))
+          return persist(next).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                data = next
+              })
+            )
+          )
         })
       )
 
@@ -124,7 +140,7 @@ const make = (initial: Data, persist: (data: Data) => Effect.Effect<void>) =>
         update((current) => ({
           ...current,
           agents: current.agents.some((existing) => existing.id === agent.id)
-            ? current.agents.map((existing) => existing.id === agent.id ? agent : existing)
+            ? current.agents.map((existing) => (existing.id === agent.id ? agent : existing))
             : [...current.agents, agent]
         })),
       removeAgent: (id) =>

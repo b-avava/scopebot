@@ -21,6 +21,9 @@ export interface ChatReply {
 }
 
 /** The language model behind agents. Providers plug in as layers. */
-export class ChatModel extends Context.Service<ChatModel, {
-  reply(request: ChatRequest): Effect.Effect<ChatReply, ModelNotConfigured | ModelFailed | ModelRefused>
-}>()("@scope-bot/agents/ChatModel") {}
+export class ChatModel extends Context.Service<
+  ChatModel,
+  {
+    reply(request: ChatRequest): Effect.Effect<ChatReply, ModelNotConfigured | ModelFailed | ModelRefused>
+  }
+>()("@scope-bot/agents/ChatModel") {}

@@ -11,12 +11,17 @@
     "dev:server": "pnpm --filter @scope-bot/server dev",
     "dev:desktop": "pnpm --filter @scope-bot/desktop dev",
     "start": "pnpm --filter @scope-bot/server start",
+    "build": "pnpm --filter @scope-bot/desktop build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm -r typecheck",
-    "check": "pnpm typecheck && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
+    "@biomejs/biome": "catalog:",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",

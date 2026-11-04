@@ -1,5 +1,5 @@
-import { ClayAvatar } from "@scope-bot/ui/components/avatar/ClayAvatar.tsx"
 import type { AgentFace, AgentShape } from "@scope-bot/domain"
+import { ClayAvatar } from "@scope-bot/ui/components/avatar/ClayAvatar.tsx"
 
 interface MascotProps {
   readonly shape?: AgentShape

@@ -47,25 +47,28 @@ const send = (client: Anthropic, model: string, request: ChatRequest) =>
 
 export const AnthropicChatModel = Layer.effect(
   ChatModel,
-  Effect.gen(function*() {
+  Effect.gen(function* () {
     const config = yield* llmConfig
     const defaultModel = Option.getOrElse(config.model, () => DEFAULT_MODEL)
 
-    const client = Option.map(config.apiKey, (key) =>
-      new Anthropic({
-        apiKey: Redacted.value(key),
-        timeout: REQUEST_TIMEOUT_MS,
-        maxRetries: MAX_RETRIES
-      }))
+    const client = Option.map(
+      config.apiKey,
+      (key) =>
+        new Anthropic({
+          apiKey: Redacted.value(key),
+          timeout: REQUEST_TIMEOUT_MS,
+          maxRetries: MAX_RETRIES
+        })
+    )
 
     return ChatModel.of({
-      reply: Effect.fn("ChatModel.reply")(function*(request) {
+      reply: Effect.fn("ChatModel.reply")(function* (request) {
         if (Option.isNone(client)) return yield* new ModelNotConfigured()
 
         const response = yield* send(client.value, request.model === "" ? defaultModel : request.model, request)
         if (response.stop_reason === "refusal") return yield* new ModelRefused()
 
-        const text = response.content.flatMap((block) => block.type === "text" ? [block.text] : []).join("")
+        const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
         if (text === "") return yield* new ModelFailed({ reason: "empty_reply" })
 
         return {

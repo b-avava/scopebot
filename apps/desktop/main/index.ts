@@ -1,6 +1,6 @@
+import { join } from "node:path"
 import { Effect } from "effect"
 import { app, BrowserWindow, ipcMain } from "electron"
-import { join } from "node:path"
 import { Channels, type Theme } from "../preload/bridge.ts"
 import { ServerConnection } from "./ServerConnection.ts"
 
@@ -36,7 +36,7 @@ const createWindow = () => {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
   window.webContents.on("will-navigate", (event) => event.preventDefault())
 
-  const devServerUrl = process.env["ELECTRON_RENDERER_URL"]
+  const devServerUrl = process.env.ELECTRON_RENDERER_URL
   if (devServerUrl !== undefined) {
     void window.loadURL(devServerUrl)
   } else {
@@ -44,7 +44,7 @@ const createWindow = () => {
   }
 }
 
-const main = Effect.gen(function*() {
+const main = Effect.gen(function* () {
   const server = yield* ServerConnection
   yield* Effect.promise(() => app.whenReady())
 
@@ -55,15 +55,13 @@ const main = Effect.gen(function*() {
   ipcMain.handle(Channels.resumeAgent, (_, id: unknown) => Effect.runPromise(server.resumeAgent(id)))
   ipcMain.handle(Channels.listAgents, () => Effect.runPromise(server.listAgents))
   ipcMain.handle(Channels.createAgent, (_, input: unknown) => Effect.runPromise(server.createAgent(input)))
-  ipcMain.handle(
-    Channels.updateAgent,
-    (_, id: unknown, settings: unknown) => Effect.runPromise(server.updateAgent(id, settings))
+  ipcMain.handle(Channels.updateAgent, (_, id: unknown, settings: unknown) =>
+    Effect.runPromise(server.updateAgent(id, settings))
   )
   ipcMain.handle(Channels.removeAgent, (_, id: unknown) => Effect.runPromise(server.removeAgent(id)))
   ipcMain.handle(Channels.listMessages, (_, id: unknown) => Effect.runPromise(server.listMessages(id)))
-  ipcMain.handle(
-    Channels.sendMessage,
-    (_, id: unknown, text: unknown) => Effect.runPromise(server.sendMessage(id, text))
+  ipcMain.handle(Channels.sendMessage, (_, id: unknown, text: unknown) =>
+    Effect.runPromise(server.sendMessage(id, text))
   )
   ipcMain.handle(Channels.listActions, (_, id: unknown) => Effect.runPromise(server.listActions(id)))
 

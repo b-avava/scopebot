@@ -69,8 +69,4 @@ export class ModelFailed extends Schema.TaggedError<ModelFailed>()(
   { httpApiStatus: 502 }
 ) {}
 
-export class ModelRefused extends Schema.TaggedError<ModelRefused>()(
-  "ModelRefused",
-  {},
-  { httpApiStatus: 422 }
-) {}
+export class ModelRefused extends Schema.TaggedError<ModelRefused>()("ModelRefused", {}, { httpApiStatus: 422 }) {}

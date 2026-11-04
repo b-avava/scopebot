@@ -8,7 +8,7 @@ This README is the single source of truth for the project. It is written for bot
 
 ## 1. Vision
 
-Traditional CRMs (Bitrix24, amoCRM, etc.) are tools that people work *in*. Scope Bot inverts this: the CRM is the memory and workplace of AI agents, which do the operational work, while humans set goals, define boundaries and approve sensitive actions.
+Traditional CRMs (Bitrix24, amoCRM, etc.) are tools that people work _in_. Scope Bot inverts this: the CRM is the memory and workplace of AI agents, which do the operational work, while humans set goals, define boundaries and approve sensitive actions.
 
 - Businesses create **AI employees**, organize them into **departments**, and assign each a **zone of responsibility**, **permissions** and **objectives**.
 - Agents handle conversations (WhatsApp, Telegram, phone), book appointments, follow up with clients, process payments and produce reports.
@@ -61,11 +61,11 @@ These are non-negotiable and should guide every design decision.
 
 ### Local executor tiers
 
-| Tier | Mechanism | Use for |
-|------|-----------|---------|
-| 1 | CRM storage | Documents attached to client records (preferred) |
-| 2 | File connector | Search/read/send files in **allowlisted** folders; optional sync of folders into CRM |
-| 3 | Computer use | GUI apps without an API (clinic software, 1C, X-ray software) |
+| Tier | Mechanism      | Use for                                                                              |
+| ---- | -------------- | ------------------------------------------------------------------------------------ |
+| 1    | CRM storage    | Documents attached to client records (preferred)                                     |
+| 2    | File connector | Search/read/send files in **allowlisted** folders; optional sync of folders into CRM |
+| 3    | Computer use   | GUI apps without an API (clinic software, 1C, X-ray software)                        |
 
 The agent runtime must pick the lowest tier that can complete the task.
 
@@ -73,18 +73,20 @@ The agent runtime must pick the lowest tier that can complete the task.
 
 ## 4. Tech stack
 
-| Area | Choice |
-|------|--------|
-| Language | TypeScript (strict) |
-| Runtime | Node.js 24 LTS (runs TypeScript directly via type stripping, no build step in development) |
-| Core library | **Effect v4** (`effect`, including `effect/http`, `effect/http-api`, `effect/rpc` and `effect/sql`; plus `@effect/platform-node`, `@effect/sql-pg`, `@effect/vitest`) |
-| Database | PostgreSQL |
-| Desktop | Electron (main: Node + Effect; renderer: React), built with electron-vite |
-| UI | React, [beUI](https://beui.dev) components (copied into `packages/ui`), Tailwind CSS 4, Motion, Google Sans; TanStack Query for server data (Effect in renderer is optional) |
-| Monorepo | pnpm workspaces |
-| Tests | Vitest via `@effect/vitest` |
-| Computer use | `desktopCapturer` for screenshots, nut.js for input, small native sidecar (C#/.NET or Rust) for Windows UI Automation |
-| Deployment | Docker Compose (self-hosted), same images for cloud |
+| Area         | Choice                                                                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language     | TypeScript (strict)                                                                                                                                                          |
+| Runtime      | Node.js 24 LTS (runs TypeScript directly via type stripping, no build step in development)                                                                                   |
+| Core library | **Effect v4** (`effect`, including `effect/http`, `effect/http-api`, `effect/rpc` and `effect/sql`; plus `@effect/platform-node`, `@effect/sql-pg`, `@effect/vitest`)        |
+| Database     | PostgreSQL                                                                                                                                                                   |
+| Desktop      | Electron (main: Node + Effect; renderer: React), built with electron-vite                                                                                                    |
+| UI           | React, [beUI](https://beui.dev) components (copied into `packages/ui`), Tailwind CSS 4, Motion, Google Sans; TanStack Query for server data (Effect in renderer is optional) |
+| Monorepo     | pnpm workspaces                                                                                                                                                              |
+| Tests        | Vitest via `@effect/vitest`                                                                                                                                                  |
+| Lint, format | Biome (rules in `biome.json`)                                                                                                                                                |
+| CI           | GitHub Actions: lint, typecheck, test, build                                                                                                                                 |
+| Computer use | `desktopCapturer` for screenshots, nut.js for input, small native sidecar (C#/.NET or Rust) for Windows UI Automation                                                        |
+| Deployment   | Docker Compose (self-hosted), same images for cloud                                                                                                                          |
 
 ### Effect version warning (important for AI assistants)
 
@@ -135,7 +137,8 @@ pnpm install
 pnpm dev          # server on http://localhost:3000 + desktop app window
 pnpm dev:server   # server only
 pnpm dev:desktop  # desktop app only (shows "Server offline" without a server)
-pnpm check        # typecheck + tests
+pnpm check        # lint + typecheck + tests
+pnpm lint:fix     # format and apply safe lint fixes
 ```
 
 The first `pnpm dev` downloads the Electron binary, so it takes longer. Stopping either process in `pnpm dev` stops both.
@@ -216,6 +219,7 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 ## 9. Roadmap
 
 ### Phase 1 — MVP (clinic pilot)
+
 - CRM core: contacts, deals, pipelines, appointments, doctor schedules, documents
 - One agent type: **front desk / sales** on WhatsApp + Telegram — answers, books, confirms, reschedules, reminds
 - Approval queue and audit log UI
@@ -224,12 +228,14 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 - Desktop app: UI + notifications for approvals (executor not required yet)
 
 ### Phase 2
+
 - Departments with multiple cooperating agents and handoffs
 - Voice agent (inbound/outbound calls)
 - File connector (executor tier 2)
 - Payments module
 
 ### Phase 3
+
 - Computer use executor (tier 3) on Windows, ideally on a dedicated VM/session per agent
 - Recorded workflows replayed without LLM, with LLM fallback on deviations
 - Additional verticals beyond clinics
@@ -258,6 +264,7 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 - Every tool and every integration has tests (`@effect/vitest`), with external systems replaced by test layers.
 - Code, comments, commit messages and docs in **English**.
 - Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`).
+- `main` is protected: every change goes through a pull request with green CI (see `docs/adr/0005-ci-and-code-style.md`).
 
 ---
 

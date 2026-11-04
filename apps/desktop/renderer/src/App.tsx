@@ -6,7 +6,10 @@ import { ChatScreen } from "./ChatScreen.tsx"
 import { HireScreen } from "./HireScreen.tsx"
 import { errorMessage, useAgents, useServerStatus, useTheme } from "./hooks.ts"
 
-type View = { readonly screen: "hire" } | { readonly screen: "business" } | { readonly screen: "agent"; readonly id: string }
+type View =
+  | { readonly screen: "hire" }
+  | { readonly screen: "business" }
+  | { readonly screen: "agent"; readonly id: string }
 
 export const App = () => {
   const server = useServerStatus()

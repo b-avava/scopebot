@@ -1,3 +1,4 @@
+import type { ActionPolicy, Agent, AgentPermissions, AgentSettings, AgentTone } from "@scope-bot/domain"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Input } from "@scope-bot/ui/components/motion/input.tsx"
 import {
@@ -8,7 +9,6 @@ import {
   SelectValue
 } from "@scope-bot/ui/components/motion/select.tsx"
 import { Switch } from "@scope-bot/ui/components/motion/switch.tsx"
-import type { ActionPolicy, Agent, AgentPermissions, AgentSettings, AgentTone } from "@scope-bot/domain"
 import { type ReactNode, useState } from "react"
 import { AvatarPicker } from "./AvatarPicker.tsx"
 import { jobs, timeZones } from "./sampleData.ts"
@@ -23,7 +23,11 @@ const inputClasses = { label: "px-0 text-[13px] text-muted-foreground", field: "
 
 const toSettings = ({ id: _id, createdAt: _createdAt, ...settings }: Agent): AgentSettings => settings
 
-const Section = ({ title, hint, children }: {
+const Section = ({
+  title,
+  hint,
+  children
+}: {
   readonly title: string
   readonly hint?: string
   readonly children: ReactNode
@@ -37,7 +41,12 @@ const Section = ({ title, hint, children }: {
   </section>
 )
 
-const SwitchRow = ({ label, hint, checked, onChange }: {
+const SwitchRow = ({
+  label,
+  hint,
+  checked,
+  onChange
+}: {
   readonly label: string
   readonly hint?: string
   readonly checked: boolean
@@ -58,29 +67,36 @@ const policies: ReadonlyArray<{ readonly value: ActionPolicy; readonly label: st
   { value: "deny", label: "Never" }
 ]
 
-const PolicyRow = ({ label, value, onChange }: {
+const PolicyRow = ({
+  label,
+  value,
+  onChange
+}: {
   readonly label: string
   readonly value: ActionPolicy
   readonly onChange: (policy: ActionPolicy) => void
 }) => (
   <div className="flex items-center justify-between gap-4">
     <span className="text-sm">{label}</span>
-    <div role="radiogroup" aria-label={label} className="flex shrink-0 rounded-xl bg-muted p-0.5">
+    <fieldset aria-label={label} className="flex shrink-0 rounded-xl bg-muted p-0.5">
       {policies.map((policy) => (
-        <button
+        <label
           key={policy.value}
-          type="button"
-          role="radio"
-          aria-checked={policy.value === value}
-          onClick={() => onChange(policy.value)}
-          className={`rounded-[10px] px-3 py-1.5 text-[13px] font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`cursor-pointer rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors duration-150 has-focus-visible:ring-2 has-focus-visible:ring-ring ${
             policy.value === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
           }`}
         >
+          <input
+            type="radio"
+            name={label}
+            checked={policy.value === value}
+            onChange={() => onChange(policy.value)}
+            className="sr-only"
+          />
           {policy.label}
-        </button>
+        </label>
       ))}
-    </div>
+    </fieldset>
   </div>
 )
 
@@ -174,7 +190,11 @@ export const AgentSettingsScreen = ({ agent, onSave, onRemove }: AgentSettingsSc
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobOptions.map((job) => <SelectItem key={job} value={job}>{job}</SelectItem>)}
+                  {jobOptions.map((job) => (
+                    <SelectItem key={job} value={job}>
+                      {job}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -201,7 +221,8 @@ export const AgentSettingsScreen = ({ agent, onSave, onRemove }: AgentSettingsSc
               min={1}
               value={String(draft.limits.maxMessagesPerDay)}
               onChange={(value) =>
-                change({ limits: { ...draft.limits, maxMessagesPerDay: toNumber(value, 1, 10_000) } })}
+                change({ limits: { ...draft.limits, maxMessagesPerDay: toNumber(value, 1, 10_000) } })
+              }
               classNames={inputClasses}
             />
             <Input
@@ -210,8 +231,7 @@ export const AgentSettingsScreen = ({ agent, onSave, onRemove }: AgentSettingsSc
               min={0}
               max={100}
               value={String(draft.limits.maxDiscountPercent)}
-              onChange={(value) =>
-                change({ limits: { ...draft.limits, maxDiscountPercent: toNumber(value, 0, 100) } })}
+              onChange={(value) => change({ limits: { ...draft.limits, maxDiscountPercent: toNumber(value, 0, 100) } })}
               classNames={inputClasses}
             />
           </Section>
@@ -270,7 +290,11 @@ export const AgentSettingsScreen = ({ agent, onSave, onRemove }: AgentSettingsSc
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {timeZones.map((zone) => <SelectItem key={zone} value={zone}>{zone}</SelectItem>)}
+                      {timeZones.map((zone) => (
+                        <SelectItem key={zone} value={zone}>
+                          {zone}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -353,33 +377,41 @@ export const AgentSettingsScreen = ({ agent, onSave, onRemove }: AgentSettingsSc
             />
           </Section>
 
-          {confirmingRemove
-            ? (
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive"
-                  onClick={() => {
-                    void onRemove().then(setStatus)
-                  }}
-                >
-                  Delete for good
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setConfirmingRemove(false)}>Keep</Button>
-              </div>
-            )
-            : (
-              <div>
-                <Button size="sm" variant="ghost" onClick={() => setConfirmingRemove(true)}>Delete employee</Button>
-              </div>
-            )}
+          {confirmingRemove ? (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive"
+                onClick={() => {
+                  void onRemove().then(setStatus)
+                }}
+              >
+                Delete for good
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmingRemove(false)}>
+                Keep
+              </Button>
+            </div>
+          ) : (
+            <div>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmingRemove(true)}>
+                Delete employee
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-3 border-t px-6 py-3">
-        <Button size="sm" disabled={!changed || !valid} onClick={() => void save()}>Save</Button>
-        {status !== null && <span role="status" className="text-[13px] text-muted-foreground">{status}</span>}
+        <Button size="sm" disabled={!changed || !valid} onClick={() => void save()}>
+          Save
+        </Button>
+        {status !== null && (
+          <span role="status" className="text-[13px] text-muted-foreground">
+            {status}
+          </span>
+        )}
       </div>
     </div>
   )

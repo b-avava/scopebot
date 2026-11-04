@@ -33,26 +33,27 @@ const decodeSettings = Schema.decodeUnknownEffect(AgentSettings)
 const decodeMessage = Schema.decodeUnknownEffect(SendMessage)
 const decodeBusiness = Schema.decodeUnknownEffect(BusinessProfile)
 
-export class ServerConnection extends Context.Service<ServerConnection, {
-  readonly status: Effect.Effect<ServerStatus>
-  readonly getBusiness: Bridged<"getBusiness">
-  saveBusiness(business: unknown): Bridged<"saveBusiness">
-  readonly listAgents: Bridged<"listAgents">
-  createAgent(input: unknown): Bridged<"createAgent">
-  updateAgent(id: unknown, settings: unknown): Bridged<"updateAgent">
-  removeAgent(id: unknown): Bridged<"removeAgent">
-  listMessages(id: unknown): Bridged<"listMessages">
-  sendMessage(id: unknown, text: unknown): Bridged<"sendMessage">
-  listActions(id: unknown): Bridged<"listActions">
-  getChatState(id: unknown): Bridged<"getChatState">
-  resumeAgent(id: unknown): Bridged<"resumeAgent">
-}>()("@scope-bot/desktop/main/ServerConnection") {
+export class ServerConnection extends Context.Service<
+  ServerConnection,
+  {
+    readonly status: Effect.Effect<ServerStatus>
+    readonly getBusiness: Bridged<"getBusiness">
+    saveBusiness(business: unknown): Bridged<"saveBusiness">
+    readonly listAgents: Bridged<"listAgents">
+    createAgent(input: unknown): Bridged<"createAgent">
+    updateAgent(id: unknown, settings: unknown): Bridged<"updateAgent">
+    removeAgent(id: unknown): Bridged<"removeAgent">
+    listMessages(id: unknown): Bridged<"listMessages">
+    sendMessage(id: unknown, text: unknown): Bridged<"sendMessage">
+    listActions(id: unknown): Bridged<"listActions">
+    getChatState(id: unknown): Bridged<"getChatState">
+    resumeAgent(id: unknown): Bridged<"resumeAgent">
+  }
+>()("@scope-bot/desktop/main/ServerConnection") {
   static readonly layerNoDeps = Layer.effect(
     ServerConnection,
-    Effect.gen(function*() {
-      const url = yield* Config.String("SCOPE_BOT_SERVER_URL").pipe(
-        Config.withDefault("http://127.0.0.1:3000")
-      )
+    Effect.gen(function* () {
+      const url = yield* Config.String("SCOPE_BOT_SERVER_URL").pipe(Config.withDefault("http://127.0.0.1:3000"))
       const client = yield* HttpApiClient.make(Api, {
         transformClient: HttpClient.mapRequest(HttpClientRequest.prependUrl(url))
       })
@@ -72,33 +73,36 @@ export class ServerConnection extends Context.Service<ServerConnection, {
         createAgent: (input) =>
           toResult(decodeCreate(input).pipe(Effect.flatMap((payload) => client.agents.create({ payload })))),
         updateAgent: (id, settings) =>
-          toResult(Effect.gen(function*() {
-            const params = { id: yield* decodeId(id) }
-            return yield* client.agents.update({ params, payload: yield* decodeSettings(settings) })
-          })),
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeId(id) }
+              return yield* client.agents.update({ params, payload: yield* decodeSettings(settings) })
+            })
+          ),
         removeAgent: (id) =>
-          toResult(decodeId(id).pipe(
-            Effect.flatMap((id) => client.agents.remove({ params: { id } })),
-            Effect.asVoid
-          )),
+          toResult(
+            decodeId(id).pipe(
+              Effect.flatMap((id) => client.agents.remove({ params: { id } })),
+              Effect.asVoid
+            )
+          ),
         listMessages: (id) =>
           toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.messages({ params: { id } })))),
         sendMessage: (id, text) =>
-          toResult(Effect.gen(function*() {
-            const params = { id: yield* decodeId(id) }
-            return yield* client.chat.send({ params, payload: yield* decodeMessage({ text }) })
-          })),
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeId(id) }
+              return yield* client.chat.send({ params, payload: yield* decodeMessage({ text }) })
+            })
+          ),
         listActions: (id) =>
           toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.actions({ params: { id } })))),
         getChatState: (id) =>
           toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.state({ params: { id } })))),
-        resumeAgent: (id) =>
-          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.resume({ params: { id } }))))
+        resumeAgent: (id) => toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.resume({ params: { id } }))))
       })
     })
   )
 
-  static readonly layer = ServerConnection.layerNoDeps.pipe(
-    Layer.provide(FetchHttpClient.layer)
-  )
+  static readonly layer = ServerConnection.layerNoDeps.pipe(Layer.provide(FetchHttpClient.layer))
 }

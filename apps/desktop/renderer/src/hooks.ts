@@ -62,7 +62,7 @@ export const useAgents = (online: boolean) => {
   const update = useCallback(async (id: string, settings: AgentSettings) => {
     const result = await window.scopeBot.updateAgent(id, settings)
     if (result.ok) {
-      setAgents((current) => current.map((agent) => agent.id === id ? result.value : agent))
+      setAgents((current) => current.map((agent) => (agent.id === id ? result.value : agent)))
     }
     return result
   }, [])
