@@ -13,8 +13,10 @@ import { TitleBar } from "./TitleBar.tsx"
 
 interface ChatScreenProps {
   readonly agent: Agent
+  readonly showSettings: boolean
+  readonly onToggleSettings: () => void
   readonly onSaveSettings: (settings: AgentSettings) => Promise<string | null>
-  readonly onRemove: () => Promise<string | null>
+  readonly onRemove: () => void
 }
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -41,7 +43,9 @@ const CustomerBubble = ({ text }: { readonly text: string }) => (
 )
 
 const Message = ({ agent, message }: { readonly agent: Agent; readonly message: ChatMessage }) =>
-  message.role === "customer" ? (
+  message.role === "note" ? (
+    <p className="text-center text-[13px] text-muted-foreground">{message.text}</p>
+  ) : message.role === "customer" ? (
     <CustomerBubble text={message.text} />
   ) : (
     <div className="flex items-end gap-2">
@@ -208,9 +212,7 @@ const Conversation = ({ agent }: { readonly agent: Agent }) => {
   )
 }
 
-export const ChatScreen = ({ agent, onSaveSettings, onRemove }: ChatScreenProps) => {
-  const [showSettings, setShowSettings] = useState(false)
-
+export const ChatScreen = ({ agent, showSettings, onToggleSettings, onSaveSettings, onRemove }: ChatScreenProps) => {
   return (
     <>
       <TitleBar>
@@ -219,7 +221,7 @@ export const ChatScreen = ({ agent, onSaveSettings, onRemove }: ChatScreenProps)
         <span className="text-sm text-muted-foreground">{agent.job}</span>
         {!agent.active && <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">Paused</span>}
         <div className="window-no-drag ml-auto">
-          <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)}>
+          <Button variant="ghost" size="sm" onClick={onToggleSettings}>
             {showSettings ? <MessageSquare className="size-4" /> : <Settings className="size-4" />}
             {showSettings ? "Chat" : "Settings"}
           </Button>

@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
-import { ModelFailed, ModelNotConfigured, ModelRefused } from "@scope-bot/domain"
+import { ModelFailed, ModelNotConfigured, type ModelOption, ModelRefused } from "@scope-bot/domain"
 import { Effect, Layer, Option, Redacted } from "effect"
 import { ChatModel, type ChatRequest } from "./ChatModel.ts"
 import { llmConfig } from "./LlmConfig.ts"
@@ -34,14 +34,30 @@ const send = (client: Anthropic, model: string, request: ChatRequest) =>
           max_tokens: MAX_TOKENS,
           system: request.system,
           messages: request.turns.map((turn) => ({ role: turn.role, content: turn.text })),
-          // Short conversational replies do not need deep reasoning.
-          ...(supportsEffort(model) ? { output_config: { effort: "low" as const } } : {}),
+          // Short conversational replies do not need deep reasoning unless the business asks for it.
+          ...(supportsEffort(model)
+            ? { output_config: { effort: request.reasoning === "default" ? ("low" as const) : request.reasoning } }
+            : {}),
           ...(supportsFallback(model)
             ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
             : {})
         },
         { signal }
       ),
+    catch: toFailure
+  })
+
+const listModels = (client: Anthropic) =>
+  Effect.tryPromise({
+    try: async (signal) => {
+      const models: Array<ModelOption> = []
+      for await (const model of client.models.list(null, { signal })) {
+        if (model.lifecycle !== "retired") {
+          models.push({ id: model.id, name: model.display_name, group: "", free: false })
+        }
+      }
+      return models
+    },
     catch: toFailure
   })
 
@@ -62,6 +78,10 @@ export const AnthropicChatModel = Layer.effect(
     )
 
     return ChatModel.of({
+      models: Effect.gen(function* () {
+        if (Option.isNone(client)) return yield* new ModelNotConfigured()
+        return { defaultModel, models: yield* listModels(client.value) }
+      }),
       reply: Effect.fn("ChatModel.reply")(function* (request) {
         if (Option.isNone(client)) return yield* new ModelNotConfigured()
 

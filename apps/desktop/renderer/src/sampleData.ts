@@ -44,24 +44,22 @@ export const avatarFaces: ReadonlyArray<AgentFace> = [
 ]
 
 export const avatarColors = [
-  { value: "#EE8B3A", label: "Orange" },
-  { value: "#EFB53C", label: "Yellow" },
-  { value: "#E34F4F", label: "Red" },
-  { value: "#E05AA8", label: "Pink" },
-  { value: "#8B6CEB", label: "Purple" },
-  { value: "#4A93E8", label: "Blue" },
-  { value: "#3FBFA3", label: "Teal" },
-  { value: "#4FC98B", label: "Green" },
-  { value: "#8C5E3C", label: "Brown" },
-  { value: "#9A9A9A", label: "Gray" },
-  { value: "#F2F0EA", label: "White" },
-  { value: "#2B2B2B", label: "Black" }
+  { value: "#8C5A3C", label: "Brown" },
+  { value: "#E8404A", label: "Red" },
+  { value: "#F2772E", label: "Orange" },
+  { value: "#F5A623", label: "Amber" },
+  { value: "#3CBF6E", label: "Green" },
+  { value: "#2FB5A0", label: "Teal" },
+  { value: "#3B8BEB", label: "Blue" },
+  { value: "#8A5CF0", label: "Purple" },
+  { value: "#EC3F97", label: "Pink" },
+  { value: "#7A7A7A", label: "Gray" }
 ] as const
 
 export const defaultLook = {
   shape: "circle",
   face: "neutral",
-  color: "#EE8B3A"
+  color: "#3B8BEB"
 } as const
 
 // Used by the Suggestions block, which is commented out in HireScreen for now.

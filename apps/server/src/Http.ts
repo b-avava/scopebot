@@ -57,7 +57,25 @@ export const ChatApiHandlers = HttpApiBuilder.group(
   })
 )
 
-export const ApiHandlers = Layer.mergeAll(SystemApiHandlers, BusinessApiHandlers, AgentsApiHandlers, ChatApiHandlers)
+export const ModelsApiHandlers = HttpApiBuilder.group(
+  Api,
+  "models",
+  Effect.fn(function* (handlers) {
+    const chat = yield* AgentChat
+
+    return handlers.handleAll({
+      list: () => chat.models
+    })
+  })
+)
+
+export const ApiHandlers = Layer.mergeAll(
+  SystemApiHandlers,
+  BusinessApiHandlers,
+  AgentsApiHandlers,
+  ChatApiHandlers,
+  ModelsApiHandlers
+)
 
 export const ApiRoutes = HttpApiBuilder.layer(Api, {
   openapiPath: "/openapi.json"

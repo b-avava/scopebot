@@ -14,6 +14,7 @@ import {
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Building2, ChartColumn, Check, Moon, Plus, ScrollText, Sun } from "lucide-react"
 import type { ServerStatus, Theme } from "../../preload/bridge.ts"
+import { AgentMenu } from "./AgentMenu.tsx"
 import { Mascot } from "./Mascot.tsx"
 
 interface AppSidebarProps {
@@ -27,6 +28,8 @@ interface AppSidebarProps {
   readonly onHire: () => void
   readonly onOpenBusiness: () => void
   readonly onOpenEmployee: (id: string) => void
+  readonly onOpenSettings: (id: string) => void
+  readonly onDeleteEmployee: (agent: Agent) => void
 }
 
 const serverLabel = (server: ServerStatus | null) => {
@@ -44,25 +47,33 @@ export const AppSidebar = ({
   onToggleTheme,
   onHire,
   onOpenBusiness,
-  onOpenEmployee
+  onOpenEmployee,
+  onOpenSettings,
+  onDeleteEmployee
 }: AppSidebarProps) => (
   <AnimatedSidebar collapsible="none" ariaLabel="Main" panelClassName="bg-sidebar h-full">
     <AnimatedSidebarHeader className="window-drag flex h-12 shrink-0 flex-row items-center gap-2 px-4">
-      <span className="text-sm font-semibold">Scope Bot</span>
+      <span className="text-[15px] font-semibold">Scope Bot</span>
     </AnimatedSidebarHeader>
 
     <AnimatedSidebarContent>
       <AnimatedSidebarGroup>
         <AnimatedSidebarGroupContent>
-          <AnimatedSidebarMenu>
+          <AnimatedSidebarMenu className="[--sidebar-row:2.75rem]">
             <AnimatedSidebarMenuItem>
-              <AnimatedSidebarMenuButton icon={<Plus className="size-4" />} isActive={hiring} onSelect={onHire}>
+              <AnimatedSidebarMenuButton
+                className="text-[15px]"
+                icon={<Plus className="size-5" />}
+                isActive={hiring}
+                onSelect={onHire}
+              >
                 {team.length === 0 ? "Hire your first employee" : "Hire an employee"}
               </AnimatedSidebarMenuButton>
             </AnimatedSidebarMenuItem>
             <AnimatedSidebarMenuItem>
               <AnimatedSidebarMenuButton
-                icon={<Building2 className="size-4" />}
+                className="text-[15px]"
+                icon={<Building2 className="size-5" />}
                 isActive={businessOpen}
                 onSelect={onOpenBusiness}
               >
@@ -71,21 +82,21 @@ export const AppSidebar = ({
             </AnimatedSidebarMenuItem>
             {team.length > 0 && (
               <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton disabled icon={<Check className="size-4" />}>
+                <AnimatedSidebarMenuButton disabled className="text-[15px]" icon={<Check className="size-5" />}>
                   Approvals
                 </AnimatedSidebarMenuButton>
               </AnimatedSidebarMenuItem>
             )}
             {team.length > 0 && (
               <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton disabled icon={<ScrollText className="size-4" />}>
+                <AnimatedSidebarMenuButton disabled className="text-[15px]" icon={<ScrollText className="size-5" />}>
                   Activity log
                 </AnimatedSidebarMenuButton>
               </AnimatedSidebarMenuItem>
             )}
             {team.length > 0 && (
               <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton disabled icon={<ChartColumn className="size-4" />}>
+                <AnimatedSidebarMenuButton disabled className="text-[15px]" icon={<ChartColumn className="size-5" />}>
                   Dashboard
                 </AnimatedSidebarMenuButton>
               </AnimatedSidebarMenuItem>
@@ -98,16 +109,22 @@ export const AppSidebar = ({
         <AnimatedSidebarGroup>
           <AnimatedSidebarGroupLabel>Team</AnimatedSidebarGroupLabel>
           <AnimatedSidebarGroupContent>
-            <AnimatedSidebarMenu>
+            <AnimatedSidebarMenu className="[--sidebar-icon:2.5rem] [--sidebar-row:3.5rem]">
               {team.map((employee) => (
                 <AnimatedSidebarMenuItem key={employee.id}>
                   <AnimatedSidebarMenuButton
-                    icon={<Mascot size={20} shape={employee.shape} face={employee.face} color={employee.color} />}
+                    className="pr-11 text-[15px] font-medium"
+                    icon={<Mascot size={40} shape={employee.shape} face={employee.face} color={employee.color} />}
                     isActive={employee.id === activeId}
                     onSelect={() => onOpenEmployee(employee.id)}
                   >
                     {employee.name}
                   </AnimatedSidebarMenuButton>
+                  <AgentMenu
+                    name={employee.name}
+                    onSettings={() => onOpenSettings(employee.id)}
+                    onDelete={() => onDeleteEmployee(employee)}
+                  />
                 </AnimatedSidebarMenuItem>
               ))}
             </AnimatedSidebarMenu>

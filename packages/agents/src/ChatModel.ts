@@ -1,4 +1,4 @@
-import type { ModelFailed, ModelNotConfigured, ModelRefused } from "@scope-bot/domain"
+import type { ModelCatalog, ModelFailed, ModelNotConfigured, ModelRefused, ReasoningEffort } from "@scope-bot/domain"
 import { Context, type Effect } from "effect"
 
 export interface ChatTurn {
@@ -9,6 +9,7 @@ export interface ChatTurn {
 export interface ChatRequest {
   /** Empty uses the provider's default model. */
   readonly model: string
+  readonly reasoning: ReasoningEffort
   readonly system: string
   readonly turns: ReadonlyArray<ChatTurn>
 }
@@ -24,6 +25,8 @@ export interface ChatReply {
 export class ChatModel extends Context.Service<
   ChatModel,
   {
+    /** What the provider offers right now. */
+    readonly models: Effect.Effect<ModelCatalog, ModelNotConfigured | ModelFailed>
     reply(request: ChatRequest): Effect.Effect<ChatReply, ModelNotConfigured | ModelFailed | ModelRefused>
   }
 >()("@scope-bot/agents/ChatModel") {}

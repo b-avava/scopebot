@@ -6,11 +6,15 @@ import { AgentId, ModelNotConfigured } from "@scope-bot/domain"
 import { Effect, Layer } from "effect"
 import { HttpServer } from "effect/http"
 import { HttpApiTest } from "effect/http-api"
-import { AgentsApiHandlers, ChatApiHandlers } from "../src/Http.ts"
+import { AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers } from "../src/Http.ts"
 
 const model = Layer.succeed(
   ChatModel,
   ChatModel.of({
+    models: Effect.succeed({
+      defaultModel: "some-model",
+      models: [{ id: "some-model", name: "Some model", group: "", free: false }]
+    }),
     reply: (request) =>
       request.turns.at(-1)?.text === "no key"
         ? Effect.fail(new ModelNotConfigured())
@@ -24,9 +28,9 @@ const services = AgentChat.layer.pipe(
   Layer.provide(Store.layerMemory)
 )
 
-const handlers = Layer.mergeAll(AgentsApiHandlers, ChatApiHandlers).pipe(Layer.provide(services))
+const handlers = Layer.mergeAll(AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers).pipe(Layer.provide(services))
 
-const makeClient = HttpApiTest.groups(Api, ["agents", "chat"])
+const makeClient = HttpApiTest.groups(Api, ["agents", "chat", "models"])
 
 layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API", (it) => {
   it.effect("creates an agent, changes its settings and chats with it", () =>
@@ -59,6 +63,15 @@ layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API",
 
       yield* client.agents.remove({ params: { id: agent.id } })
       assert.isFalse((yield* client.agents.list()).some((item) => item.id === agent.id))
+    })
+  )
+
+  it.effect("lists the provider's models", () =>
+    Effect.gen(function* () {
+      const client = yield* makeClient
+      const catalog = yield* client.models.list()
+      assert.strictEqual(catalog.defaultModel, "some-model")
+      assert.strictEqual(catalog.models[0]?.name, "Some model")
     })
   )
 

@@ -1,4 +1,4 @@
-import { ModelFailed, ModelNotConfigured, ModelRefused } from "@scope-bot/domain"
+import { ModelFailed, ModelNotConfigured, type ModelOption, ModelRefused } from "@scope-bot/domain"
 import { Effect, Layer, Option, Redacted, Schedule, Schema } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http"
 import { ChatModel } from "./ChatModel.ts"
@@ -19,6 +19,34 @@ const Completion = Schema.Struct({
     })
   )
 })
+
+const ModelList = Schema.Struct({
+  data: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.optionalKey(Schema.NullOr(Schema.String))
+    })
+  )
+})
+
+// `/models` lists everything the key can reach, and only some of it can chat.
+const NOT_FOR_CHAT = /embed|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|sora|babbage|davinci/i
+
+const toOption = (model: (typeof ModelList.Type)["data"][number]): ModelOption => {
+  const separator = model.id.indexOf("/")
+  return {
+    id: model.id,
+    name: (model.name ?? model.id).replace(/\s*\(free\)$/i, ""),
+    group: separator === -1 ? "" : model.id.slice(0, separator),
+    free: model.id.endsWith(":free")
+  }
+}
+
+/** Free models first, then each lab together. */
+const byFreeThenGroup = (first: ModelOption, second: ModelOption) =>
+  Number(second.free) - Number(first.free) ||
+  first.group.localeCompare(second.group) ||
+  first.name.localeCompare(second.name)
 
 const failureFor = (status: number) => {
   if (status === 401 || status === 403) return new ModelNotConfigured()
@@ -56,15 +84,43 @@ export const OpenAiCompatibleChatModel = Layer.effect(
       HttpClient.retryTransient({ schedule: Schedule.exponential("500 millis"), times: 2 })
     )
 
+    const url = (path: string) => `${baseUrl.replace(/\/$/, "")}${path}`
+
     return ChatModel.of({
+      models: Effect.gen(function* () {
+        if (Option.isNone(apiKey)) return yield* new ModelNotConfigured()
+
+        const response = yield* HttpClientRequest.get(url("/models")).pipe(
+          HttpClientRequest.bearerToken(Redacted.value(apiKey.value)),
+          client.execute,
+          Effect.timeout("20 seconds"),
+          Effect.mapError(() => new ModelFailed({ reason: "connection" }))
+        )
+
+        if (response.status < 200 || response.status >= 300) return yield* failureFor(response.status)
+
+        const list = yield* HttpClientResponse.schemaBodyJson(ModelList)(response).pipe(
+          Effect.mapError(() => new ModelFailed({ reason: "invalid_response" }))
+        )
+
+        return {
+          defaultModel,
+          models: list.data
+            .filter((model) => !NOT_FOR_CHAT.test(model.id))
+            .map(toOption)
+            .sort(byFreeThenGroup)
+        }
+      }),
       reply: Effect.fn("ChatModel.reply")(function* (request) {
         const model = request.model === "" ? defaultModel : request.model
         if (Option.isNone(apiKey) || model === "") return yield* new ModelNotConfigured()
 
-        const response = yield* HttpClientRequest.post(`${baseUrl.replace(/\/$/, "")}/chat/completions`).pipe(
+        const response = yield* HttpClientRequest.post(url("/chat/completions")).pipe(
           HttpClientRequest.bearerToken(Redacted.value(apiKey.value)),
           HttpClientRequest.bodyJsonUnsafe({
             model,
+            // Not every model takes this, so it is only sent when the business asked for it.
+            ...(request.reasoning === "default" ? {} : { reasoning_effort: request.reasoning }),
             messages: [
               { role: "system", content: request.system },
               ...request.turns.map((turn) => ({ role: turn.role, content: turn.text }))

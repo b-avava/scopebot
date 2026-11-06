@@ -7,7 +7,8 @@ export type MessageId = typeof MessageId.Type
 export const ChatMessage = Schema.Struct({
   id: MessageId,
   agentId: AgentId,
-  role: Schema.Literals(["customer", "agent"]),
+  /** A note is for the people supervising the chat. Models and customers never see it. */
+  role: Schema.Literals(["customer", "agent", "note"]),
   text: Schema.String,
   createdAt: Schema.String
 })

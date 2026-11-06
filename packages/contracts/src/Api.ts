@@ -10,6 +10,7 @@ import {
   ChatState,
   CreateAgent,
   HealthStatus,
+  ModelCatalog,
   ModelFailed,
   ModelNotConfigured,
   ModelRefused,
@@ -90,9 +91,19 @@ export class ChatApi extends HttpApiGroup.make("chat")
   )
   .prefix("/agents") {}
 
+export class ModelsApi extends HttpApiGroup.make("models")
+  .add(
+    HttpApiEndpoint.get("list", "/", {
+      success: ModelCatalog,
+      error: [ModelNotConfigured, ModelFailed]
+    })
+  )
+  .prefix("/models") {}
+
 export class Api extends HttpApi.make("scope-bot")
   .add(SystemApi)
   .add(BusinessApi)
   .add(AgentsApi)
   .add(ChatApi)
+  .add(ModelsApi)
   .annotateMerge(OpenApi.annotations({ title: "Scope Bot API" })) {}

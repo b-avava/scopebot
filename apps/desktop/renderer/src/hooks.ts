@@ -1,6 +1,6 @@
-import type { Agent, AgentSettings, CreateAgent } from "@scope-bot/domain"
+import type { Agent, AgentSettings, CreateAgent, ModelCatalog } from "@scope-bot/domain"
 import { useCallback, useEffect, useState } from "react"
-import type { BridgeError, ServerStatus, Theme } from "../../preload/bridge.ts"
+import type { BridgeError, BridgeResult, ServerStatus, Theme } from "../../preload/bridge.ts"
 
 const POLL_INTERVAL_MS = 3000
 const THEME_KEY = "scope-bot-theme"
@@ -74,6 +74,23 @@ export const useAgents = (online: boolean) => {
   }, [])
 
   return { agents, create, update, remove }
+}
+
+/** Null until the server answers. */
+export const useModels = () => {
+  const [result, setResult] = useState<BridgeResult<ModelCatalog> | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void window.scopeBot.listModels().then((next) => {
+      if (active) setResult(next)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return result
 }
 
 const readTheme = (): Theme => {

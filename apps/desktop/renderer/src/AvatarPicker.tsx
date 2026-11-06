@@ -105,14 +105,14 @@ export const AvatarPicker = ({ value, onChange, compact = false }: AvatarPickerP
 
       <Section title="Colour" current={avatarColors.find((option) => option.value === value.color)?.label ?? ""}>
         <ColorSelector value={value.color} onValueChange={(color) => onChange({ ...value, color })} aria-label="Colour">
-          <ColorSelectorList className="flex flex-wrap gap-2">
+          <ColorSelectorList className="flex flex-wrap gap-1.5">
             {avatarColors.map((option) => (
               <ColorSelectorItem
                 key={option.value}
                 value={option.value}
                 color={option.value}
                 label={option.label}
-                className="size-9"
+                className="size-8"
               />
             ))}
           </ColorSelectorList>

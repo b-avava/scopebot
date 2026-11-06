@@ -834,7 +834,7 @@ export const AnimatedSidebarMenu = forwardRef<
       as="ul"
       inset={0}
       pillClassName="rounded-xl bg-muted/70"
-      pillContainerClassName="inset-y-auto top-0 h-9"
+      pillContainerClassName="inset-y-auto top-0 h-[var(--sidebar-row,2.25rem)]"
       data-slot="sidebar-menu"
       className={cn("flex w-full min-w-0 list-none flex-col gap-0.5", className)}
     >
@@ -1077,7 +1077,7 @@ export function AnimatedSidebarMenuButton({
       {icon ? (
         <span
           aria-hidden="true"
-          className="relative z-10 grid size-5 shrink-0 place-items-center"
+          className="relative z-10 grid size-[var(--sidebar-icon,1.25rem)] shrink-0 place-items-center"
         >
           {icon}
         </span>
@@ -1127,7 +1127,7 @@ export function AnimatedSidebarMenuButton({
   );
 
   const interactiveClassName = cn(
-    "relative flex min-h-9 w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-xl px-3 text-left text-sm font-medium outline-none",
+    "relative flex min-h-[var(--sidebar-row,2.25rem)] w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-xl px-3 text-left text-sm font-medium outline-none",
     "text-muted-foreground transition-colors hover:text-foreground",
     "focus-visible:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring",
     isActive && "text-foreground",

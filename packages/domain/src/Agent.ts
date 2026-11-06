@@ -1,4 +1,8 @@
 import { Schema } from "effect"
+import { ReasoningEffort } from "./Model.ts"
+
+/** Backups an agent can keep, in the order they are tried. */
+export const MAX_BACKUP_MODELS = 8
 
 export const AgentId = Schema.String.pipe(Schema.brand("AgentId"))
 export type AgentId = typeof AgentId.Type
@@ -92,6 +96,9 @@ export const AgentSettings = Schema.Struct({
   instructions: Schema.String,
   /** Model id of the configured provider. Empty uses the server default. */
   model: Schema.String,
+  reasoning: ReasoningEffort,
+  /** Tried in order when `model` cannot answer. */
+  backupModels: Schema.Array(Schema.String).check(Schema.isMaxLength(MAX_BACKUP_MODELS)),
   /** A paused agent does not answer. */
   active: Schema.Boolean,
   permissions: AgentPermissions,
@@ -178,6 +185,8 @@ export const defaultSettings = (input: CreateAgent): AgentSettings => ({
   ...(jobPresets[input.job] ?? frontDesk),
   instructions: "",
   model: "",
+  reasoning: "default",
+  backupModels: [],
   active: true,
   hours: {
     enabled: false,

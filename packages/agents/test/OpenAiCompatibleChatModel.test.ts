@@ -4,7 +4,12 @@ import { HttpClient, type HttpClientRequest, HttpClientResponse } from "effect/h
 import { ChatModel } from "../src/ChatModel.ts"
 import { OpenAiCompatibleChatModel } from "../src/OpenAiCompatibleChatModel.ts"
 
-const request = { model: "", system: "Be kind", turns: [{ role: "user" as const, text: "Hi" }] }
+const request = {
+  model: "",
+  reasoning: "default" as const,
+  system: "Be kind",
+  turns: [{ role: "user" as const, text: "Hi" }]
+}
 
 const makeLayer = (
   env: Record<string, string>,
@@ -45,6 +50,58 @@ describe("OpenAiCompatibleChatModel", () => {
       assert.strictEqual(seen[0]?.headers.authorization, "Bearer key")
     }).pipe(Effect.provide(makeLayer(configured, () => completion("Hello"), seen)))
   })
+
+  it.effect("sends reasoning only when the business chose a level", () => {
+    const seen: Array<HttpClientRequest.HttpClientRequest> = []
+    const bodyOf = (index: number) => {
+      const body = seen[index]?.body
+      return body?._tag === "Uint8Array" ? new TextDecoder().decode(body.body) : ""
+    }
+    return Effect.gen(function* () {
+      yield* reply
+      yield* ChatModel.use((model) => model.reply({ ...request, reasoning: "high" }))
+      assert.notInclude(bodyOf(0), "reasoning_effort")
+      assert.include(bodyOf(1), '"reasoning_effort":"high"')
+    }).pipe(Effect.provide(makeLayer(configured, () => completion("Hello"), seen)))
+  })
+
+  it.effect("lists chat models with free ones first, grouped by lab", () => {
+    const seen: Array<HttpClientRequest.HttpClientRequest> = []
+    return Effect.gen(function* () {
+      const catalog = yield* ChatModel.use((model) => model.models)
+      assert.strictEqual(seen[0]?.url, "https://llm.test/v1/models")
+      assert.strictEqual(catalog.defaultModel, "some-model")
+      assert.deepStrictEqual(catalog.models, [
+        { id: "meta/llama:free", name: "Llama", group: "meta", free: true },
+        { id: "gpt-x", name: "gpt-x", group: "", free: false },
+        { id: "acme/big", name: "Acme: Big", group: "acme", free: false }
+      ])
+    }).pipe(
+      Effect.provide(
+        makeLayer(
+          configured,
+          () =>
+            Response.json({
+              data: [
+                { id: "acme/big", name: "Acme: Big" },
+                { id: "text-embedding-3-small" },
+                { id: "whisper-1" },
+                { id: "gpt-x" },
+                { id: "meta/llama:free", name: "Llama (free)" }
+              ]
+            }),
+          seen
+        )
+      )
+    )
+  })
+
+  it.effect("cannot list models without a key", () =>
+    Effect.gen(function* () {
+      const error = yield* ChatModel.use((model) => model.models).pipe(Effect.flip)
+      assert.strictEqual(error._tag, "ModelNotConfigured")
+    }).pipe(Effect.provide(makeLayer({}, () => Response.json({ data: [] }))))
+  )
 
   it.effect("is not configured without a key", () =>
     Effect.gen(function* () {

@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef } from "react"
+import { useEffect, useRef } from "react"
 
-export type ClayShape = "circle" | "pebble" | "squircle" | "capsule" | "triangle" | "hexagon" | "cloud" | "droplet"
+export type AvatarShape = "circle" | "pebble" | "squircle" | "capsule" | "triangle" | "hexagon" | "cloud" | "droplet"
 
-export type ClayFace =
+export type AvatarFace =
   | "neutral"
   | "attentive"
   | "surprised"
@@ -41,7 +41,7 @@ const roundedPolygon = (points: ReadonlyArray<Point>, radius: number) => {
   return `${path.join("")}Z`
 }
 
-const outlines: Record<ClayShape, string> = {
+const outlines: Record<AvatarShape, string> = {
   circle: "M60 8a52 52 0 1 1 0 104a52 52 0 1 1 0-104Z",
   pebble: "M56 16C84 8 110 26 112 56C114 84 92 102 62 104C34 106 8 94 8 66C8 40 30 23 56 16Z",
   squircle: "M60 10C98 10 110 22 110 60C110 98 98 110 60 110C22 110 10 98 10 60C10 22 22 10 60 10Z",
@@ -71,7 +71,7 @@ const outlines: Record<ClayShape, string> = {
 }
 
 /** Where the face sits, so it stays on the widest part of each shape. */
-const faceCentre: Record<ClayShape, Point> = {
+const faceCentre: Record<AvatarShape, Point> = {
   circle: [60, 56],
   pebble: [62, 56],
   squircle: [60, 56],
@@ -96,8 +96,8 @@ const pair = (x: number, y: number, width: number, height: number, rotate = 0, m
     { x, y, width, height, rotate }
   ] as const
 
-const faces: Record<ClayFace, readonly [Eye, Eye]> = {
-  neutral: pair(12, 0, 8, 15, 10),
+const faces: Record<AvatarFace, readonly [Eye, Eye]> = {
+  neutral: pair(12, 0, 8.5, 19, -16),
   attentive: pair(11, 0, 7, 16),
   surprised: pair(13, 0, 13, 13),
   excited: pair(14, 0, 13, 20, 8, true),
@@ -129,17 +129,19 @@ const channels = (hex: string) => {
   return [value >> 16, (value >> 8) & 255, value & 255] as const
 }
 
-const mix = (hex: string, target: number, amount: number) =>
-  `rgb(${channels(hex)
-    .map((channel) => Math.round(channel + (target - channel) * amount))
-    .join(" ")})`
-
+/** White eyes, except on bodies too pale for them to show. */
 const eyeColor = (hex: string) => {
   const [red, green, blue] = channels(hex)
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue < 96 ? "#F5F5F5" : "#141414"
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue > 200 ? "#141414" : "#FFFFFF"
 }
 
-const MAX_LOOK = 9
+/** The face sits low and to the right of each shape's centre. */
+const FACE_OFFSET_X = 2
+const FACE_OFFSET_Y = 13
+const EYE_SCALE = 1.35
+const EYE_SPREAD = 1.15
+
+const MAX_LOOK = 6
 const FOLLOW_DISTANCE = 240
 const SPRING = 0.09
 const DAMPING = 0.72
@@ -225,9 +227,9 @@ const useLiveFace = (
   }, [enabled, svg, face])
 }
 
-export interface ClayAvatarProps {
-  shape?: ClayShape
-  face?: ClayFace
+export interface BotAvatarProps {
+  shape?: AvatarShape
+  face?: AvatarFace
   /** A #rrggbb colour. */
   color?: string
   size?: number
@@ -236,16 +238,15 @@ export interface ClayAvatarProps {
   className?: string
 }
 
-/** A soft clay figure drawn entirely with SVG. */
-export function ClayAvatar({
+/** A flat figure with a face, drawn entirely with SVG. */
+export function BotAvatar({
   shape = "circle",
   face = "neutral",
-  color = "#EE8B3A",
+  color = "#3B8BEB",
   size = 28,
   live = false,
   className
-}: ClayAvatarProps) {
-  const id = useId().replace(/:/g, "")
+}: BotAvatarProps) {
   const svg = useRef<SVGSVGElement>(null)
   const faceGroup = useRef<SVGGElement>(null)
   useLiveFace(live, svg, faceGroup)
@@ -253,8 +254,6 @@ export function ClayAvatar({
   const [centreX, centreY] = faceCentre[shape]
   const outline = outlines[shape]
   const eyes = eyeColor(color)
-  // A blur is wasted, and slow in long lists, at small sizes.
-  const detailed = size >= 40
 
   return (
     <svg
@@ -266,56 +265,27 @@ export function ClayAvatar({
       className={className}
       style={{ flexShrink: 0, overflow: "visible" }}
     >
-      <defs>
-        <radialGradient id={`${id}-clay`} gradientUnits="userSpaceOnUse" cx="44" cy="36" r="104">
-          <stop offset="0" stopColor={mix(color, 255, 0.34)} />
-          <stop offset="0.5" stopColor={color} />
-          <stop offset="1" stopColor={mix(color, 0, 0.16)} />
-        </radialGradient>
-        <radialGradient id={`${id}-rim`} gradientUnits="userSpaceOnUse" cx="52" cy="46" r="82">
-          <stop offset="0.62" stopColor={mix(color, 0, 0.3)} stopOpacity="0" />
-          <stop offset="1" stopColor={mix(color, 0, 0.3)} stopOpacity="0.55" />
-        </radialGradient>
-        <clipPath id={`${id}-clip`}>
-          <path d={outline} />
-        </clipPath>
-        {detailed && (
-          <filter id={`${id}-soft`} x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="7" />
-          </filter>
-        )}
-      </defs>
-
-      <path d={outline} fill={`url(#${id}-clay)`} />
-      <g clipPath={`url(#${id}-clip)`}>
-        <path d={outline} fill={`url(#${id}-rim)`} />
-        {detailed && (
-          <ellipse
-            cx="42"
-            cy="32"
-            rx="27"
-            ry="17"
-            fill="#FFFFFF"
-            opacity="0.42"
-            filter={`url(#${id}-soft)`}
-            transform="rotate(-24 42 32)"
-          />
-        )}
-      </g>
+      <path d={outline} fill={color} />
 
       <g ref={faceGroup}>
-        {faces[face].map((eye) => (
-          <g key={eye.x} transform={`translate(${centreX + eye.x} ${centreY + eye.y}) rotate(${eye.rotate ?? 0})`}>
-            <rect
-              x={-eye.width / 2}
-              y={-eye.height / 2}
-              width={eye.width}
-              height={eye.height}
-              rx={Math.min(eye.width, eye.height) / 2}
-              fill={eyes}
-            />
-          </g>
-        ))}
+        {faces[face].map((eye) => {
+          const width = eye.width * EYE_SCALE
+          const height = eye.height * EYE_SCALE
+          const x = centreX + FACE_OFFSET_X + eye.x * EYE_SPREAD
+          const y = centreY + FACE_OFFSET_Y + eye.y
+          return (
+            <g key={eye.x} transform={`translate(${x} ${y}) rotate(${eye.rotate ?? 0})`}>
+              <rect
+                x={-width / 2}
+                y={-height / 2}
+                width={width}
+                height={height}
+                rx={Math.min(width, height) / 2}
+                fill={eyes}
+              />
+            </g>
+          )
+        })}
       </g>
     </svg>
   )

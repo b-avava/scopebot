@@ -12,6 +12,7 @@ import {
   type ChatMessage,
   type ChatState,
   MessageId,
+  type ModelCatalog,
   type ModelFailed,
   type ModelNotConfigured,
   type ModelRefused,
@@ -19,10 +20,11 @@ import {
 } from "@scope-bot/domain"
 import { Clock, Context, Effect, Layer, Option } from "effect"
 import { Agents, nowIso } from "./Agents.ts"
-import { ChatModel, type ChatTurn } from "./ChatModel.ts"
+import { ChatModel, type ChatReply, type ChatRequest, type ChatTurn } from "./ChatModel.ts"
 import { isWithinHours } from "./WorkingHours.ts"
 
 const DAY_MS = 24 * 60 * 60 * 1000
+const MODEL_COOLDOWN_MS = 10 * 60 * 1000
 
 const toneRules: Record<AgentTone, string> = {
   friendly: "Your tone is warm and friendly. Keep replies short.",
@@ -117,6 +119,19 @@ const toTurn = (message: ChatMessage): ChatTurn => ({
   text: message.text
 })
 
+const modelName = (model: string) => (model === "" ? "The default model" : model)
+
+/** The agent's models in order, leaving out failed ones while another can still answer. */
+export const modelsToTry = (
+  agent: Pick<Agent, "model" | "backupModels">,
+  coolingUntil: ReadonlyMap<string, number>,
+  now: number
+) => {
+  const models = [...new Set([agent.model, ...agent.backupModels])]
+  const ready = models.filter((model) => (coolingUntil.get(model) ?? 0) <= now)
+  return ready.length === 0 ? models : ready
+}
+
 const newMessage = (agentId: AgentId, role: ChatMessage["role"], text: string) =>
   nowIso.pipe(
     Effect.map(
@@ -134,6 +149,7 @@ const newMessage = (agentId: AgentId, role: ChatMessage["role"], text: string) =
 export class AgentChat extends Context.Service<
   AgentChat,
   {
+    readonly models: Effect.Effect<ModelCatalog, ModelNotConfigured | ModelFailed>
     messages(agentId: AgentId): Effect.Effect<ReadonlyArray<ChatMessage>, AgentNotFound>
     actions(agentId: AgentId): Effect.Effect<ReadonlyArray<AgentAction>, AgentNotFound>
     state(agentId: AgentId): Effect.Effect<ChatState, AgentNotFound>
@@ -151,6 +167,7 @@ export class AgentChat extends Context.Service<
       const store = yield* Store
       const agents = yield* Agents
       const model = yield* ChatModel
+      const coolingUntil = new Map<string, number>()
 
       const audit = (
         agent: Agent,
@@ -185,6 +202,55 @@ export class AgentChat extends Context.Service<
           yield* audit(agent, source, { status: "done", tool: "handoff", summary: `Handed to a human: ${reason}` })
         })
 
+      // No reply has reached the customer when a model fails, so the next one can
+      // safely answer. A refusal is not an outage: it must not be shopped around.
+      const replyWith = (
+        agent: Agent,
+        source: ChatMessage,
+        request: Omit<ChatRequest, "model">,
+        models: ReadonlyArray<string>,
+        index = 0
+      ): Effect.Effect<ChatReply & { readonly tried: string }, ModelNotConfigured | ModelFailed | ModelRefused> => {
+        const tried = models[index] ?? ""
+        const next = models[index + 1]
+        return model.reply({ ...request, model: tried }).pipe(
+          Effect.map((answer) => ({ ...answer, tried })),
+          Effect.catchTag("ModelFailed", (failure) =>
+            Effect.gen(function* () {
+              coolingUntil.set(tried, (yield* Clock.currentTimeMillis) + MODEL_COOLDOWN_MS)
+              if (next === undefined) return yield* failure
+              yield* audit(agent, source, {
+                status: "failed",
+                model: tried,
+                summary: `${modelName(tried)} failed (${failure.reason}), trying ${next}`
+              })
+              return yield* replyWith(agent, source, request, models, index + 1)
+            })
+          )
+        )
+      }
+
+      const answerCustomer = (agent: Agent, source: ChatMessage, history: ReadonlyArray<ChatMessage>, now: number) =>
+        Effect.gen(function* () {
+          const models = modelsToTry(agent, coolingUntil, now)
+          const answer = yield* replyWith(
+            agent,
+            source,
+            {
+              reasoning: agent.reasoning,
+              system: systemPrompt(agent, yield* store.business),
+              turns: history.filter((message) => message.role !== "note").map(toTurn)
+            },
+            models
+          ).pipe(Effect.tapError(() => audit(agent, source, { status: "failed", summary: "Could not reply" })))
+
+          if (answer.tried !== models[0]) {
+            const note = `${modelName(models[0] ?? "")} did not answer, so ${modelName(answer.tried)} took over.`
+            yield* store.appendMessage(yield* newMessage(agent.id, "note", note))
+          }
+          return answer
+        })
+
       const state = (agentId: AgentId) =>
         agents.get(agentId).pipe(
           Effect.andThen(store.openEscalation(agentId)),
@@ -192,6 +258,7 @@ export class AgentChat extends Context.Service<
         )
 
       return AgentChat.of({
+        models: model.models,
         messages: (agentId) => agents.get(agentId).pipe(Effect.andThen(store.messages(agentId))),
         actions: (agentId) => agents.get(agentId).pipe(Effect.andThen(store.actions(agentId))),
         state,
@@ -231,15 +298,7 @@ export class AgentChat extends Context.Service<
             return { customerMessage, reply: null, outcome: "escalated" as const }
           }
 
-          const answer = yield* model
-            .reply({
-              model: agent.model,
-              system: systemPrompt(agent, yield* store.business),
-              turns: history.map(toTurn)
-            })
-            .pipe(
-              Effect.tapError(() => audit(agent, customerMessage, { status: "failed", summary: "Could not reply" }))
-            )
+          const answer = yield* answerCustomer(agent, customerMessage, history, now)
 
           const parsed = parseReply(answer.text)
           const reply = parsed.text === "" ? null : yield* newMessage(agentId, "agent", parsed.text)

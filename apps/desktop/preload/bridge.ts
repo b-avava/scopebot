@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   ChatState,
   CreateAgent,
+  ModelCatalog,
   SentMessage
 } from "@scope-bot/domain"
 
@@ -22,7 +23,8 @@ export const Channels = {
   sendMessage: "chat:send",
   listActions: "chat:actions",
   getChatState: "chat:state",
-  resumeAgent: "chat:resume"
+  resumeAgent: "chat:resume",
+  listModels: "models:list"
 } as const
 
 export interface ServerStatus {
@@ -61,4 +63,5 @@ export interface ScopeBotBridge {
   listActions(id: string): Promise<BridgeResult<ReadonlyArray<AgentAction>>>
   getChatState(id: string): Promise<BridgeResult<ChatState>>
   resumeAgent(id: string): Promise<BridgeResult<ChatState>>
+  listModels(): Promise<BridgeResult<ModelCatalog>>
 }

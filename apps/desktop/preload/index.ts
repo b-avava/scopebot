@@ -14,7 +14,8 @@ const bridge: ScopeBotBridge = {
   sendMessage: (id, text) => ipcRenderer.invoke(Channels.sendMessage, id, text),
   listActions: (id) => ipcRenderer.invoke(Channels.listActions, id),
   getChatState: (id) => ipcRenderer.invoke(Channels.getChatState, id),
-  resumeAgent: (id) => ipcRenderer.invoke(Channels.resumeAgent, id)
+  resumeAgent: (id) => ipcRenderer.invoke(Channels.resumeAgent, id),
+  listModels: () => ipcRenderer.invoke(Channels.listModels)
 }
 
 contextBridge.exposeInMainWorld("scopeBot", bridge)

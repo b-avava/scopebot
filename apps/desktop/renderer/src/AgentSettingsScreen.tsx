@@ -11,12 +11,13 @@ import {
 import { Switch } from "@scope-bot/ui/components/motion/switch.tsx"
 import { type ReactNode, useState } from "react"
 import { AvatarPicker } from "./AvatarPicker.tsx"
+import { ModelSettings } from "./ModelSettings.tsx"
 import { jobs, timeZones } from "./sampleData.ts"
 
 interface AgentSettingsScreenProps {
   readonly agent: Agent
   readonly onSave: (settings: AgentSettings) => Promise<string | null>
-  readonly onRemove: () => Promise<string | null>
+  readonly onRemove: () => void
 }
 
 const inputClasses = { label: "px-0 text-[13px] text-muted-foreground", field: "rounded-xl" }
@@ -140,7 +141,6 @@ export const AgentSettingsScreen = ({ agent, onSave, onRemove }: AgentSettingsSc
   const [draft, setDraft] = useState(() => toSettings(agent))
   const [openSelect, setOpenSelect] = useState<"job" | "zone" | null>(null)
   const [status, setStatus] = useState<string | null>(null)
-  const [confirmingRemove, setConfirmingRemove] = useState(false)
 
   const change = (patch: Partial<AgentSettings>) => {
     setDraft({ ...draft, ...patch })
@@ -367,39 +367,21 @@ export const AgentSettingsScreen = ({ agent, onSave, onRemove }: AgentSettingsSc
             />
           </Section>
 
-          <Section title="Advanced">
-            <Input
-              label="AI model"
-              placeholder="Server default"
-              value={draft.model}
-              onChange={(model) => change({ model: model.trim() })}
-              classNames={inputClasses}
+          <Section
+            title="AI model"
+            hint="Changing the model keeps the conversation. If a model cannot answer, the next backup takes over."
+          >
+            <ModelSettings
+              value={{ model: draft.model, reasoning: draft.reasoning, backupModels: draft.backupModels }}
+              onChange={change}
             />
           </Section>
 
-          {confirmingRemove ? (
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive"
-                onClick={() => {
-                  void onRemove().then(setStatus)
-                }}
-              >
-                Delete for good
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirmingRemove(false)}>
-                Keep
-              </Button>
-            </div>
-          ) : (
-            <div>
-              <Button size="sm" variant="ghost" onClick={() => setConfirmingRemove(true)}>
-                Delete employee
-              </Button>
-            </div>
-          )}
+          <div>
+            <Button size="sm" variant="ghost" onClick={onRemove}>
+              Delete employee
+            </Button>
+          </div>
         </div>
       </div>
 

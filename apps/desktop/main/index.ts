@@ -64,6 +64,7 @@ const main = Effect.gen(function* () {
     Effect.runPromise(server.sendMessage(id, text))
   )
   ipcMain.handle(Channels.listActions, (_, id: unknown) => Effect.runPromise(server.listActions(id)))
+  ipcMain.handle(Channels.listModels, () => Effect.runPromise(server.listModels))
 
   ipcMain.handle(Channels.theme, (event, theme: unknown) => {
     if (theme !== "light" && theme !== "dark") return

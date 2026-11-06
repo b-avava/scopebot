@@ -48,6 +48,7 @@ export class ServerConnection extends Context.Service<
     listActions(id: unknown): Bridged<"listActions">
     getChatState(id: unknown): Bridged<"getChatState">
     resumeAgent(id: unknown): Bridged<"resumeAgent">
+    readonly listModels: Bridged<"listModels">
   }
 >()("@scope-bot/desktop/main/ServerConnection") {
   static readonly layerNoDeps = Layer.effect(
@@ -99,7 +100,9 @@ export class ServerConnection extends Context.Service<
           toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.actions({ params: { id } })))),
         getChatState: (id) =>
           toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.state({ params: { id } })))),
-        resumeAgent: (id) => toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.resume({ params: { id } }))))
+        resumeAgent: (id) =>
+          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.resume({ params: { id } })))),
+        listModels: toResult(client.models.list())
       })
     })
   )

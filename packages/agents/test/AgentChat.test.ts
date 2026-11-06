@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest"
 import { Store } from "@scope-bot/db"
-import { AgentId, defaultSettings, ModelFailed } from "@scope-bot/domain"
+import { AgentId, defaultSettings, ModelFailed, ModelRefused } from "@scope-bot/domain"
 import { Effect, Layer } from "effect"
+import { TestClock } from "effect/testing"
 import { AgentChat, parseReply, systemPrompt } from "../src/AgentChat.ts"
 import { Agents } from "../src/Agents.ts"
 import { ChatModel, type ChatRequest } from "../src/ChatModel.ts"
@@ -10,7 +11,9 @@ import { isWithinHours } from "../src/WorkingHours.ts"
 const makeLayer = (reply: ChatModel["Service"]["reply"]) =>
   AgentChat.layer.pipe(
     Layer.provideMerge(Agents.layer),
-    Layer.provideMerge(Layer.succeed(ChatModel, ChatModel.of({ reply }))),
+    Layer.provideMerge(
+      Layer.succeed(ChatModel, ChatModel.of({ models: Effect.succeed({ defaultModel: "", models: [] }), reply }))
+    ),
     Layer.provideMerge(Store.layerMemory)
   )
 
@@ -116,6 +119,121 @@ describe("AgentChat", () => {
       assert.strictEqual((yield* chat.actions(agent.id))[0]?.status, "failed")
     }).pipe(Effect.provide(makeLayer(() => Effect.fail(new ModelFailed({ reason: "timeout" })))))
   )
+
+  describe("backup models", () => {
+    const failing = (
+      models: ReadonlyArray<string>,
+      requests: Array<ChatRequest>,
+      error = new ModelFailed({ reason: "api_500" })
+    ) =>
+      makeLayer((request) => {
+        requests.push(request)
+        return models.includes(request.model)
+          ? Effect.fail(error)
+          : Effect.succeed({ text: "Hello!", model: request.model, inputTokens: 1, outputTokens: 1 })
+      })
+
+    const hireWithBackups = Effect.gen(function* () {
+      const agent = yield* hire
+      return yield* Agents.use((agents) =>
+        agents.update(agent.id, { ...agent, model: "main", backupModels: ["second", "third"], reasoning: "high" })
+      )
+    })
+
+    it.effect("moves to the next model, tells the supervisor and keeps notes from models", () => {
+      const requests: Array<ChatRequest> = []
+      return Effect.gen(function* () {
+        const chat = yield* AgentChat
+        const agent = yield* hireWithBackups
+
+        const sent = yield* chat.send(agent.id, "Hi")
+        assert.strictEqual(sent.reply?.text, "Hello!")
+        assert.deepStrictEqual(
+          requests.map((request) => request.model),
+          ["main", "second"]
+        )
+        assert.strictEqual(requests[1]?.reasoning, "high")
+
+        const messages = yield* chat.messages(agent.id)
+        assert.deepStrictEqual(
+          messages.map((message) => message.role),
+          ["customer", "note", "agent"]
+        )
+        assert.strictEqual(messages[1]?.text, "main did not answer, so second took over.")
+
+        const actions = yield* chat.actions(agent.id)
+        assert.deepStrictEqual(
+          actions.map((action) => [action.status, action.model]),
+          [
+            ["failed", "main"],
+            ["done", "second"]
+          ]
+        )
+
+        yield* chat.send(agent.id, "Are you open?")
+        assert.deepStrictEqual(
+          requests[2]?.turns.map((turn) => turn.text),
+          ["Hi", "Hello!", "Are you open?"]
+        )
+      }).pipe(Effect.provide(failing(["main"], requests)))
+    })
+
+    it.effect("skips a failed model for ten minutes", () => {
+      const requests: Array<ChatRequest> = []
+      return Effect.gen(function* () {
+        const chat = yield* AgentChat
+        const agent = yield* hireWithBackups
+
+        yield* chat.send(agent.id, "One")
+        yield* chat.send(agent.id, "Two")
+        assert.deepStrictEqual(
+          requests.map((request) => request.model),
+          ["main", "second", "second"]
+        )
+        assert.strictEqual((yield* chat.messages(agent.id)).filter((message) => message.role === "note").length, 1)
+
+        yield* TestClock.adjust("10 minutes")
+        yield* chat.send(agent.id, "Three")
+        assert.deepStrictEqual(
+          requests.slice(3).map((request) => request.model),
+          ["main", "second"]
+        )
+      }).pipe(Effect.provide(failing(["main"], requests)))
+    })
+
+    it.effect("fails when every model fails, and tries them all again next time", () => {
+      const requests: Array<ChatRequest> = []
+      return Effect.gen(function* () {
+        const chat = yield* AgentChat
+        const agent = yield* hireWithBackups
+
+        assert.strictEqual((yield* chat.send(agent.id, "Hi").pipe(Effect.flip))._tag, "ModelFailed")
+        assert.strictEqual(requests.length, 3)
+        assert.strictEqual((yield* chat.actions(agent.id)).at(-1)?.summary, "Could not reply")
+
+        yield* chat.send(agent.id, "Hi again").pipe(Effect.flip)
+        assert.strictEqual(requests.length, 6)
+      }).pipe(Effect.provide(failing(["main", "second", "third"], requests)))
+    })
+
+    it.effect("never asks another model after a refusal", () => {
+      const requests: Array<ChatRequest> = []
+      return Effect.gen(function* () {
+        const chat = yield* AgentChat
+        const agent = yield* hireWithBackups
+
+        assert.strictEqual((yield* chat.send(agent.id, "Hi").pipe(Effect.flip))._tag, "ModelRefused")
+        assert.strictEqual(requests.length, 1)
+      }).pipe(
+        Effect.provide(
+          makeLayer((request) => {
+            requests.push(request)
+            return Effect.fail(new ModelRefused())
+          })
+        )
+      )
+    })
+  })
 
   it.effect("reports an unknown agent", () =>
     Effect.gen(function* () {
