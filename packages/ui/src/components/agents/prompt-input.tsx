@@ -63,6 +63,10 @@ export interface PromptInputProps extends Omit<
   minRows?: number;
   maxRows?: number;
   leadingAction?: ReactNode;
+  /** Puts the plus and send buttons on the same row as the text. */
+  inline?: boolean;
+  /** Lets a message go out without text, as with an attached photo. */
+  allowEmpty?: boolean;
   className?: string;
 }
 
@@ -82,6 +86,8 @@ export function PromptInput({
   minRows = 2,
   maxRows = 8,
   leadingAction,
+  inline = false,
+  allowEmpty = false,
   className,
   disabled,
   placeholder = "Ask the agent to do something…",
@@ -102,7 +108,8 @@ export function PromptInput({
   const currentModel = models.find(
     (option) => option.value === currentModelValue,
   );
-  const canSubmit = Boolean(currentValue.trim()) && !disabled && !loading;
+  const canSubmit =
+    (allowEmpty || Boolean(currentValue.trim())) && !disabled && !loading;
 
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current;
@@ -143,7 +150,7 @@ export function PromptInput({
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = currentValue.trim();
-    if (!prompt || disabled || loading) return;
+    if ((!prompt && !allowEmpty) || disabled || loading) return;
 
     onSubmit?.(prompt, currentModelValue);
     if (value === undefined) setInternalValue("");
@@ -169,14 +176,19 @@ export function PromptInput({
       onSubmit={submit}
       className={cn(
         "relative w-full rounded-2xl border border-border/80 bg-background p-2 transition-colors focus-within:border-foreground/25",
+        inline && "flex items-end gap-1",
         disabled && "opacity-60",
         className,
       )}
     >
+      <div className={inline ? "relative order-2 min-w-0 flex-1 py-1" : "contents"}>
       <div
         ref={measurementRef}
         aria-hidden="true"
-        className="pointer-events-none invisible absolute inset-x-2 top-0 whitespace-pre-wrap px-2 text-sm leading-6 [overflow-wrap:break-word]"
+        className={cn(
+          "pointer-events-none invisible absolute top-0 whitespace-pre-wrap px-2 text-sm leading-6 [overflow-wrap:break-word]",
+          inline ? "inset-x-0" : "inset-x-2",
+        )}
       >
         {`${currentValue}\u200b`}
       </div>
@@ -190,12 +202,20 @@ export function PromptInput({
         {...textareaProps}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1.5 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground/55"
+        className={cn(
+          "scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground/55",
+          !inline && "pt-1.5",
+        )}
       />
+      </div>
 
-      <div className="mt-1 flex min-h-8 items-center gap-1">
+      <div className={inline ? "contents" : "mt-1 flex min-h-8 items-center gap-1"}>
         {actions.length ? (
-          <MorphPopover open={actionsOpen} onOpenChange={setActionsOpen}>
+          <MorphPopover
+            open={actionsOpen}
+            onOpenChange={setActionsOpen}
+            className={inline ? "order-1" : undefined}
+          >
             <MorphPopoverTrigger>
               <Button
                 type="button"
@@ -303,7 +323,7 @@ export function PromptInput({
           disabled={loading ? !onStop : !canSubmit}
           aria-label={loading ? "Stop generating" : "Send prompt"}
           onClick={loading ? onStop : undefined}
-          className="ml-auto size-8 rounded-full"
+          className={cn("ml-auto size-8 rounded-full", inline && "order-3")}
         >
           <AnimatePresence initial={false} mode="popLayout">
             <motion.span

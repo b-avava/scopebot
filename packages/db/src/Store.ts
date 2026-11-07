@@ -4,22 +4,36 @@ import {
   type AgentId,
   BusinessProfile,
   ChatMessage,
+  Conversation,
+  type ConversationId,
   defaultSettings,
   Escalation,
-  emptyBusinessProfile
+  emptyBusinessProfile,
+  emptyProviderPreferences,
+  ProviderPreferences
 } from "@scope-bot/domain"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema, Semaphore } from "effect"
 
 const Data = Schema.Struct({
   business: BusinessProfile,
   agents: Schema.Array(Agent),
+  conversations: Schema.Array(Conversation),
   messages: Schema.Array(ChatMessage),
   actions: Schema.Array(AgentAction),
-  escalations: Schema.Array(Escalation)
+  escalations: Schema.Array(Escalation),
+  preferences: ProviderPreferences
 })
 type Data = typeof Data.Type
 
-const emptyData: Data = { business: emptyBusinessProfile, agents: [], messages: [], actions: [], escalations: [] }
+const emptyData: Data = {
+  business: emptyBusinessProfile,
+  agents: [],
+  conversations: [],
+  messages: [],
+  actions: [],
+  escalations: [],
+  preferences: emptyProviderPreferences
+}
 
 const decodeData = Schema.decodeUnknownEffect(Data)
 const encodeData = Schema.encodeEffect(Data)
@@ -35,10 +49,27 @@ const validShapes: ReadonlyArray<string> = [
   "droplet"
 ]
 
+type Stored = Record<string, unknown>
+
+const list = (value: unknown): ReadonlyArray<Stored> => (Array.isArray(value) ? value : [])
+
+/** Before tabs, an agent had one chat. It became the chat that shares the agent's id. */
+const inFirstChat = (stored: Stored) => ({ conversationId: stored.agentId, ...stored })
+
 /** Brings a file written by an earlier version up to the current format. */
-const upgrade = (raw: Record<string, unknown>) => ({
+const upgrade = (raw: Stored) => ({
   ...emptyData,
   ...raw,
+  conversations: Array.isArray(raw.conversations)
+    ? raw.conversations
+    : list(raw.agents).map((agent) => ({
+        id: agent.id,
+        agentId: agent.id,
+        title: "Chat",
+        createdAt: agent.createdAt
+      })),
+  messages: list(raw.messages).map(inFirstChat),
+  escalations: list(raw.escalations).map(inFirstChat),
   agents: (Array.isArray(raw.agents) ? raw.agents : []).map((stored: Record<string, unknown>) => ({
     ...defaultSettings({
       name: String(stored.name),
@@ -48,7 +79,11 @@ const upgrade = (raw: Record<string, unknown>) => ({
       face: "neutral"
     }),
     ...stored,
-    shape: validShapes.includes(String(stored.shape)) ? stored.shape : "circle"
+    pinned: stored.pinned === true,
+    shape: validShapes.includes(String(stored.shape)) ? stored.shape : "circle",
+    backupModels: (Array.isArray(stored.backupModels) ? stored.backupModels : []).map((backup: unknown) =>
+      typeof backup === "string" ? { provider: "api", model: backup } : backup
+    )
   }))
 })
 
@@ -65,15 +100,22 @@ export class Store extends Context.Service<
     readonly agents: Effect.Effect<ReadonlyArray<Agent>>
     findAgent(id: AgentId): Effect.Effect<Option.Option<Agent>>
     saveAgent(agent: Agent): Effect.Effect<void>
-    /** Also removes the agent's messages, actions and escalations. */
+    /** Also removes the agent's chats, messages, actions and escalations. */
     removeAgent(id: AgentId): Effect.Effect<void>
+    conversations(agentId: AgentId): Effect.Effect<ReadonlyArray<Conversation>>
+    findConversation(id: ConversationId): Effect.Effect<Option.Option<Conversation>>
+    saveConversation(conversation: Conversation): Effect.Effect<void>
+    /** Also removes its messages and escalations. The audit log stays. */
+    removeConversation(id: ConversationId): Effect.Effect<void>
     messages(agentId: AgentId): Effect.Effect<ReadonlyArray<ChatMessage>>
     appendMessage(message: ChatMessage): Effect.Effect<void>
     actions(agentId: AgentId): Effect.Effect<ReadonlyArray<AgentAction>>
     appendAction(action: AgentAction): Effect.Effect<void>
-    openEscalation(agentId: AgentId): Effect.Effect<Option.Option<Escalation>>
+    openEscalation(conversationId: ConversationId): Effect.Effect<Option.Option<Escalation>>
     appendEscalation(escalation: Escalation): Effect.Effect<void>
-    resolveEscalation(agentId: AgentId, resolvedAt: string): Effect.Effect<void>
+    resolveEscalation(conversationId: ConversationId, resolvedAt: string): Effect.Effect<void>
+    readonly preferences: Effect.Effect<ProviderPreferences>
+    savePreferences(preferences: ProviderPreferences): Effect.Effect<void>
   }
 >()("@scope-bot/db/Store") {
   static readonly layerMemory = Layer.effect(
@@ -145,29 +187,52 @@ const make = (initial: Data, persist: (data: Data) => Effect.Effect<void>) =>
         })),
       removeAgent: (id) =>
         update((current) => ({
-          business: current.business,
+          ...current,
           agents: current.agents.filter((agent) => agent.id !== id),
+          conversations: current.conversations.filter((conversation) => conversation.agentId !== id),
           messages: current.messages.filter((message) => message.agentId !== id),
           actions: current.actions.filter((action) => action.agentId !== id),
           escalations: current.escalations.filter((escalation) => escalation.agentId !== id)
+        })),
+      conversations: (agentId) =>
+        Effect.sync(() => data.conversations.filter((conversation) => conversation.agentId === agentId)),
+      findConversation: (id) =>
+        Effect.sync(() => Option.fromNullishOr(data.conversations.find((conversation) => conversation.id === id))),
+      saveConversation: (conversation) =>
+        update((current) => ({
+          ...current,
+          conversations: current.conversations.some((existing) => existing.id === conversation.id)
+            ? current.conversations.map((existing) => (existing.id === conversation.id ? conversation : existing))
+            : [...current.conversations, conversation]
+        })),
+      removeConversation: (id) =>
+        update((current) => ({
+          ...current,
+          conversations: current.conversations.filter((conversation) => conversation.id !== id),
+          messages: current.messages.filter((message) => message.conversationId !== id),
+          escalations: current.escalations.filter((escalation) => escalation.conversationId !== id)
         })),
       messages: (agentId) => Effect.sync(() => data.messages.filter((message) => message.agentId === agentId)),
       appendMessage: (message) => update((current) => ({ ...current, messages: [...current.messages, message] })),
       actions: (agentId) => Effect.sync(() => data.actions.filter((action) => action.agentId === agentId)),
       appendAction: (action) => update((current) => ({ ...current, actions: [...current.actions, action] })),
-      openEscalation: (agentId) =>
+      openEscalation: (conversationId) =>
         Effect.sync(() =>
           Option.fromNullishOr(
-            data.escalations.find((escalation) => escalation.agentId === agentId && escalation.resolvedAt === null)
+            data.escalations.find(
+              (escalation) => escalation.conversationId === conversationId && escalation.resolvedAt === null
+            )
           )
         ),
       appendEscalation: (escalation) =>
         update((current) => ({ ...current, escalations: [...current.escalations, escalation] })),
-      resolveEscalation: (agentId, resolvedAt) =>
+      preferences: Effect.sync(() => data.preferences),
+      savePreferences: (preferences) => update((current) => ({ ...current, preferences })),
+      resolveEscalation: (conversationId, resolvedAt) =>
         update((current) => ({
           ...current,
           escalations: current.escalations.map((escalation) =>
-            escalation.agentId === agentId && escalation.resolvedAt === null
+            escalation.conversationId === conversationId && escalation.resolvedAt === null
               ? { ...escalation, resolvedAt }
               : escalation
           )

@@ -1,4 +1,4 @@
-import type { CreateAgent } from "@scope-bot/domain"
+import type { CreateAgent, ProviderCatalog, ProviderPreferences } from "@scope-bot/domain"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Input } from "@scope-bot/ui/components/motion/input.tsx"
 import {
@@ -11,6 +11,8 @@ import {
 import { useState } from "react"
 import { type AvatarLook, AvatarPicker } from "./AvatarPicker.tsx"
 import { LiveMascot, Mascot, watchArea } from "./Mascot.tsx"
+import { ModelField, type ModelFields } from "./ModelSettings.tsx"
+import { useModels } from "./ModelsContext.tsx"
 import { defaultLook, jobs } from "./sampleData.ts"
 import { TitleBar } from "./TitleBar.tsx"
 
@@ -18,10 +20,28 @@ interface HireScreenProps {
   readonly onHire: (input: CreateAgent) => Promise<string | null>
 }
 
+/** Starts on the default provider, or else the first one that works. */
+const startingModel = (
+  usable: ReadonlyArray<ProviderCatalog> | null,
+  preferences: ProviderPreferences
+): ModelFields => {
+  const ready = usable?.filter((item) => item.models.length > 0) ?? []
+  const provider = ready.find((item) => item.id === preferences.defaultProvider) ?? ready[0]
+  const listed = provider?.models.some((model) => model.id === provider.defaultModel) === true
+  return {
+    provider: provider?.id ?? "api",
+    model: listed ? (provider?.defaultModel ?? "") : (provider?.models[0]?.id ?? ""),
+    reasoning: "default"
+  }
+}
+
 export const HireScreen = ({ onHire }: HireScreenProps) => {
   const [name, setName] = useState("")
   const [job, setJob] = useState<string>(jobs[0])
   const [look, setLook] = useState<AvatarLook>(defaultLook)
+  const { usable, preferences } = useModels()
+  const [picked, setPicked] = useState<ModelFields | null>(null)
+  const model = picked ?? startingModel(usable, preferences)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,7 +51,7 @@ export const HireScreen = ({ onHire }: HireScreenProps) => {
   const hire = async () => {
     setSaving(true)
     setError(null)
-    setError(await onHire({ name: trimmedName, job, ...look }))
+    setError(await onHire({ name: trimmedName, job, ...look, ...model }))
     setSaving(false)
   }
 
@@ -42,11 +62,13 @@ export const HireScreen = ({ onHire }: HireScreenProps) => {
         <span className="text-sm font-semibold">New employee</span>
       </TitleBar>
 
-      <div {...watchArea} className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-7 overflow-y-auto px-6 py-6">
-          <LiveMascot size={200} {...look} />
+      <div {...watchArea} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-[476px] flex-col items-center justify-center gap-5 px-6 py-6">
+          <LiveMascot size={120} {...look} />
 
-          <div className="flex w-full max-w-[340px] flex-col gap-3.5">
+          <AvatarPicker value={look} onChange={setLook} />
+
+          <div className="flex w-full flex-col gap-3.5">
             <Input
               label="Name"
               placeholder="Nino"
@@ -69,6 +91,7 @@ export const HireScreen = ({ onHire }: HireScreenProps) => {
                 </SelectContent>
               </Select>
             </div>
+            <ModelField value={model} onChange={(patch) => setPicked({ ...model, ...patch })} />
           </div>
 
           <Button disabled={trimmedName === "" || saving} onClick={() => void hire()}>
@@ -81,10 +104,6 @@ export const HireScreen = ({ onHire }: HireScreenProps) => {
             </p>
           )}
         </div>
-
-        <aside className="w-[min(440px,48%)] shrink-0 overflow-y-auto border-l p-5">
-          <AvatarPicker value={look} onChange={setLook} />
-        </aside>
       </div>
 
       {/* Suggestions are hidden for now. To restore them, import `suggestions` from sampleData.ts.

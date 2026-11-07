@@ -1,5 +1,18 @@
 import { Api } from "@scope-bot/contracts"
-import { AgentId, AgentSettings, BusinessProfile, CreateAgent, SendMessage } from "@scope-bot/domain"
+import {
+  AgentId,
+  AgentSettings,
+  BusinessProfile,
+  ConversationId,
+  CreateAgent,
+  PinAgent,
+  ProviderId,
+  ProviderKey,
+  ProviderPreferences,
+  RenameConversation,
+  SendMessage,
+  SideQuestion
+} from "@scope-bot/domain"
 import { Config, Context, Effect, Layer, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { HttpApiClient } from "effect/http-api"
@@ -15,7 +28,10 @@ const errorCodes: Record<string, BridgeError> = {
   AgentPaused: "paused",
   ModelNotConfigured: "model-not-configured",
   ModelRefused: "model-refused",
-  ModelFailed: "model-failed"
+  ModelFailed: "model-failed",
+  ConversationNotFound: "not-found",
+  ConversationRequired: "invalid",
+  ProviderLoginFailed: "provider-login-failed"
 }
 
 const toResult = <A, E extends { readonly _tag: string }>(
@@ -28,10 +44,21 @@ const toResult = <A, E extends { readonly _tag: string }>(
 
 // Everything below comes from the renderer, so it is validated before use.
 const decodeId = Schema.decodeUnknownEffect(AgentId)
+const decodeConversation = Schema.decodeUnknownEffect(ConversationId)
+const decodeRename = Schema.decodeUnknownEffect(RenameConversation)
+
+const chatParams = (id: unknown, conversationId: unknown) =>
+  Effect.all({ id: decodeId(id), conversationId: decodeConversation(conversationId) })
 const decodeCreate = Schema.decodeUnknownEffect(CreateAgent)
 const decodeSettings = Schema.decodeUnknownEffect(AgentSettings)
 const decodeMessage = Schema.decodeUnknownEffect(SendMessage)
+const decodeQuestion = Schema.decodeUnknownEffect(SideQuestion)
 const decodeBusiness = Schema.decodeUnknownEffect(BusinessProfile)
+const decodePin = Schema.decodeUnknownEffect(PinAgent)
+const decodeQuery = Schema.decodeUnknownEffect(Schema.String)
+const decodeProvider = Schema.decodeUnknownEffect(ProviderId)
+const decodeKey = Schema.decodeUnknownEffect(ProviderKey)
+const decodePreferences = Schema.decodeUnknownEffect(ProviderPreferences)
 
 export class ServerConnection extends Context.Service<
   ServerConnection,
@@ -40,15 +67,28 @@ export class ServerConnection extends Context.Service<
     readonly getBusiness: Bridged<"getBusiness">
     saveBusiness(business: unknown): Bridged<"saveBusiness">
     readonly listAgents: Bridged<"listAgents">
+    readonly listLastMessages: Bridged<"listLastMessages">
     createAgent(input: unknown): Bridged<"createAgent">
     updateAgent(id: unknown, settings: unknown): Bridged<"updateAgent">
     removeAgent(id: unknown): Bridged<"removeAgent">
-    listMessages(id: unknown): Bridged<"listMessages">
-    sendMessage(id: unknown, text: unknown): Bridged<"sendMessage">
+    pinAgent(id: unknown, pinned: unknown): Bridged<"pinAgent">
+    search(query: unknown): Bridged<"search">
+    listConversations(id: unknown): Bridged<"listConversations">
+    createConversation(id: unknown): Bridged<"createConversation">
+    renameConversation(id: unknown, conversationId: unknown, title: unknown): Bridged<"renameConversation">
+    removeConversation(id: unknown, conversationId: unknown): Bridged<"removeConversation">
+    listMessages(id: unknown, conversationId: unknown): Bridged<"listMessages">
+    sendMessage(id: unknown, conversationId: unknown, text: unknown, images: unknown): Bridged<"sendMessage">
+    askAgent(id: unknown, conversationId: unknown, text: unknown): Bridged<"askAgent">
     listActions(id: unknown): Bridged<"listActions">
-    getChatState(id: unknown): Bridged<"getChatState">
-    resumeAgent(id: unknown): Bridged<"resumeAgent">
+    getChatState(id: unknown, conversationId: unknown): Bridged<"getChatState">
+    resumeAgent(id: unknown, conversationId: unknown): Bridged<"resumeAgent">
     readonly listModels: Bridged<"listModels">
+    readonly getPreferences: Bridged<"getPreferences">
+    savePreferences(preferences: unknown): Bridged<"savePreferences">
+    saveProviderKey(id: unknown, input: unknown): Bridged<"saveProviderKey">
+    removeProviderKey(id: unknown): Bridged<"removeProviderKey">
+    loginProvider(id: unknown): Bridged<"loginProvider">
   }
 >()("@scope-bot/desktop/main/ServerConnection") {
   static readonly layerNoDeps = Layer.effect(
@@ -71,6 +111,7 @@ export class ServerConnection extends Context.Service<
         saveBusiness: (business) =>
           toResult(decodeBusiness(business).pipe(Effect.flatMap((payload) => client.business.save({ payload })))),
         listAgents: toResult(client.agents.list()),
+        listLastMessages: toResult(client.agents.lastMessages()),
         createAgent: (input) =>
           toResult(decodeCreate(input).pipe(Effect.flatMap((payload) => client.agents.create({ payload })))),
         updateAgent: (id, settings) =>
@@ -80,6 +121,15 @@ export class ServerConnection extends Context.Service<
               return yield* client.agents.update({ params, payload: yield* decodeSettings(settings) })
             })
           ),
+        pinAgent: (id, pinned) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeId(id) }
+              return yield* client.agents.pin({ params, payload: yield* decodePin({ pinned }) })
+            })
+          ),
+        search: (query) =>
+          toResult(decodeQuery(query).pipe(Effect.flatMap((q) => client.search.run({ query: { q } })))),
         removeAgent: (id) =>
           toResult(
             decodeId(id).pipe(
@@ -87,22 +137,75 @@ export class ServerConnection extends Context.Service<
               Effect.asVoid
             )
           ),
-        listMessages: (id) =>
-          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.messages({ params: { id } })))),
-        sendMessage: (id, text) =>
+        listConversations: (id) =>
+          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.conversations({ params: { id } })))),
+        createConversation: (id) =>
+          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.createConversation({ params: { id } })))),
+        renameConversation: (id, conversationId, title) =>
           toResult(
             Effect.gen(function* () {
-              const params = { id: yield* decodeId(id) }
-              return yield* client.chat.send({ params, payload: yield* decodeMessage({ text }) })
+              const params = yield* chatParams(id, conversationId)
+              return yield* client.chat.renameConversation({ params, payload: yield* decodeRename({ title }) })
+            })
+          ),
+        removeConversation: (id, conversationId) =>
+          toResult(
+            chatParams(id, conversationId).pipe(
+              Effect.flatMap((params) => client.chat.removeConversation({ params })),
+              Effect.asVoid
+            )
+          ),
+        listMessages: (id, conversationId) =>
+          toResult(chatParams(id, conversationId).pipe(Effect.flatMap((params) => client.chat.messages({ params })))),
+        sendMessage: (id, conversationId, text, images) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* chatParams(id, conversationId)
+              return yield* client.chat.send({ params, payload: yield* decodeMessage({ text, images }) })
+            })
+          ),
+        askAgent: (id, conversationId, text) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* chatParams(id, conversationId)
+              return yield* client.chat.ask({ params, payload: yield* decodeQuestion({ text }) })
             })
           ),
         listActions: (id) =>
           toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.actions({ params: { id } })))),
-        getChatState: (id) =>
-          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.state({ params: { id } })))),
-        resumeAgent: (id) =>
-          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.chat.resume({ params: { id } })))),
-        listModels: toResult(client.models.list())
+        getChatState: (id, conversationId) =>
+          toResult(chatParams(id, conversationId).pipe(Effect.flatMap((params) => client.chat.state({ params })))),
+        resumeAgent: (id, conversationId) =>
+          toResult(chatParams(id, conversationId).pipe(Effect.flatMap((params) => client.chat.resume({ params })))),
+        listModels: toResult(client.models.list()),
+        getPreferences: toResult(client.providers.preferences()),
+        savePreferences: (preferences) =>
+          toResult(
+            decodePreferences(preferences).pipe(
+              Effect.flatMap((payload) => client.providers.savePreferences({ payload }))
+            )
+          ),
+        saveProviderKey: (id, input) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeProvider(id) }
+              yield* client.providers.saveKey({ params, payload: yield* decodeKey(input) })
+            })
+          ),
+        removeProviderKey: (id) =>
+          toResult(
+            decodeProvider(id).pipe(
+              Effect.flatMap((id) => client.providers.removeKey({ params: { id } })),
+              Effect.asVoid
+            )
+          ),
+        loginProvider: (id) =>
+          toResult(
+            decodeProvider(id).pipe(
+              Effect.flatMap((id) => client.providers.login({ params: { id } })),
+              Effect.asVoid
+            )
+          )
       })
     })
   )

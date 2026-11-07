@@ -14,11 +14,12 @@ The first vertical slice lets a business create an agent, change its settings an
 - **`ChatModel` (`packages/agents`) hides the provider,** chosen with `LLM_PROVIDER`. `anthropic` uses the official SDK wrapped in Effect, with `claude-opus-5-5` as the default model, `effort: low` because replies are short, and server-side refusal fallback where the model supports it. `openai-compatible` calls any `/chat/completions` API through the Effect HTTP client. Another kind of provider is a new layer.
 - **An agent's model is a free-text id,** because the list depends on the provider. Empty means the server default from `LLM_MODEL`. The settings screen now offers the provider's list, see ADR 0006.
 - **Settings are mostly structured, not a prompt.** Limits, working hours, handoffs and tone are fields, and new agents get defaults from their job. Working hours and the daily reply limit are enforced in code, before the model is called. A handoff stops the agent in code until a human gives the chat back; the model only signals one with a `[[HANDOFF: reason]]` tag. Permissions and the discount limit are stored and sent as instructions for now, because agents have no tools yet: they must be enforced in the tool layer when tools arrive.
+- **Settings open next to the chat and save themselves,** so a change can be tried at once. A change that gives an employee more freedom, such as a wider permission or a higher discount limit, asks first.
 - **`BusinessProfile` holds the facts** all agents may tell customers, in place of CRM data that does not exist yet.
 - **Every reply is audited** as an `AgentAction`, including failed ones, with tokens for cost tracking and the source message.
 - **The chat is a test chat:** a person in the desktop app writes as a customer. WhatsApp and Telegram come later and will use the same `AgentChat` service.
 - **The API listens on `127.0.0.1`** because it has no authentication yet.
-- **`BotAvatar` (`packages/ui`) is our own component,** drawn with flat SVG shapes: eight shapes, sixteen faces and ten colours, stored in the agent's settings. The look follows the avatars of grokbots.ai, whose code and artwork carry no open licence, so nothing was copied from them. Only large avatars follow the cursor and blink; lists and messages stay still.
+- **`BotAvatar` (`packages/ui`) is our own component,** drawn with flat SVG shapes and stored in the agent's settings as a shape, a face and a colour. People pick one of twelve characters, each a shape with its own face, and one of ten colours. The look follows the avatars of grokbots.ai, whose code and artwork carry no open licence, so nothing was copied from them. Only large avatars follow the cursor and blink; lists and messages stay still.
 
 ## Consequences
 
@@ -29,3 +30,6 @@ The first vertical slice lets a business create an agent, change its settings an
 - The JSON file rewrites all data on every change, which is fine for development and not for production.
 - Replies are not streamed: the user sees a typing indicator until the full answer arrives.
 - If the model fails, the customer's message stays in the conversation, so sending it again produces a second copy.
+- Photos in the test chat are stored as base64 inside the JSON data file and sent with the whole history. The app shrinks them first, but they belong in file storage once PostgreSQL arrives.
+- Search reads every message from memory on each query, which only works while the data fits in the JSON file. PostgreSQL full-text search replaces it.
+- A side question goes through `AgentChat.ask`. It is audited, but neither the question nor the answer enters the conversation or counts as a reply to the customer.

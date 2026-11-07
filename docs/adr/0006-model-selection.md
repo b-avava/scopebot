@@ -1,7 +1,7 @@
 # 0006. Choosing a model per agent, with backups
 
 Date: 2026-11-06
-Status: Accepted
+Status: Accepted, updated by ADR 0007
 
 ## Context
 

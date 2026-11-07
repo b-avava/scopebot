@@ -4,15 +4,76 @@ import { AgentId } from "./Agent.ts"
 export const MessageId = Schema.String.pipe(Schema.brand("MessageId"))
 export type MessageId = typeof MessageId.Type
 
+export const ConversationId = Schema.String.pipe(Schema.brand("ConversationId"))
+export type ConversationId = typeof ConversationId.Type
+
+/** The title of a chat until its first message names it. */
+export const NEW_CHAT_TITLE = "New chat"
+
+/** One tab of an employee. Tabs separate tasks and share the employee's memory. */
+export const Conversation = Schema.Struct({
+  id: ConversationId,
+  agentId: AgentId,
+  title: Schema.NonEmptyString,
+  createdAt: Schema.String
+})
+export type Conversation = typeof Conversation.Type
+
+export const ConversationSummary = Schema.Struct({
+  ...Conversation.fields,
+  messageCount: Schema.Int
+})
+export type ConversationSummary = typeof ConversationSummary.Type
+
+export const RenameConversation = Schema.Struct({
+  title: Schema.NonEmptyString
+})
+export type RenameConversation = typeof RenameConversation.Type
+
+export class ConversationNotFound extends Schema.TaggedError<ConversationNotFound>()(
+  "ConversationNotFound",
+  {},
+  { httpApiStatus: 404 }
+) {}
+
+/** An employee always keeps one chat. */
+export class ConversationRequired extends Schema.TaggedError<ConversationRequired>()(
+  "ConversationRequired",
+  {},
+  { httpApiStatus: 409 }
+) {}
+
+/** Largest number of photos in one message. */
+export const MAX_MESSAGE_IMAGES = 4
+
+export const ChatImage = Schema.Struct({
+  mediaType: Schema.Literals(["image/jpeg", "image/png", "image/webp"]),
+  /** Base64, without a data URL prefix. */
+  data: Schema.NonEmptyString
+})
+export type ChatImage = typeof ChatImage.Type
+
+const MessageImages = Schema.Array(ChatImage).check(Schema.isMaxLength(MAX_MESSAGE_IMAGES))
+
 export const ChatMessage = Schema.Struct({
   id: MessageId,
   agentId: AgentId,
+  conversationId: ConversationId,
   /** A note is for the people supervising the chat. Models and customers never see it. */
   role: Schema.Literals(["customer", "agent", "note"]),
   text: Schema.String,
+  images: Schema.optionalKey(MessageImages),
   createdAt: Schema.String
 })
 export type ChatMessage = typeof ChatMessage.Type
+
+/** What the team list shows under an employee's name. */
+export const LastMessage = Schema.Struct({
+  agentId: AgentId,
+  text: Schema.String,
+  createdAt: Schema.String
+})
+export type LastMessage = typeof LastMessage.Type
 
 /** Immutable audit record of something an agent did. */
 export const AgentAction = Schema.Struct({
@@ -34,6 +95,7 @@ export type AgentAction = typeof AgentAction.Type
 export const Escalation = Schema.Struct({
   id: Schema.String,
   agentId: AgentId,
+  conversationId: ConversationId,
   reason: Schema.String,
   createdAt: Schema.String,
   resolvedAt: Schema.NullOr(Schema.String)
@@ -45,10 +107,23 @@ export const ChatState = Schema.Struct({
 })
 export type ChatState = typeof ChatState.Type
 
+/** A message can be only a photo, but it cannot be empty. */
 export const SendMessage = Schema.Struct({
+  text: Schema.String,
+  images: Schema.optionalKey(MessageImages)
+}).check(Schema.makeFilter((message) => message.text.trim() !== "" || (message.images?.length ?? 0) > 0))
+export type SendMessage = typeof SendMessage.Type
+
+/** A question from a supervisor. It stays out of the customer's conversation. */
+export const SideQuestion = Schema.Struct({
   text: Schema.NonEmptyString
 })
-export type SendMessage = typeof SendMessage.Type
+export type SideQuestion = typeof SideQuestion.Type
+
+export const SideAnswer = Schema.Struct({
+  text: Schema.String
+})
+export type SideAnswer = typeof SideAnswer.Type
 
 export const SentMessage = Schema.Struct({
   customerMessage: ChatMessage,

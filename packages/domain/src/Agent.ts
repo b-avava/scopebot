@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { ReasoningEffort } from "./Model.ts"
+import { ModelChoice, ProviderId, ReasoningEffort } from "./Model.ts"
 
 /** Backups an agent can keep, in the order they are tried. */
 export const MAX_BACKUP_MODELS = 8
@@ -94,11 +94,12 @@ export const AgentSettings = Schema.Struct({
   tone: AgentTone,
   /** Special rules of the business, in its own words. */
   instructions: Schema.String,
-  /** Model id of the configured provider. Empty uses the server default. */
+  provider: ProviderId,
+  /** Model id on that provider. Empty uses its default. */
   model: Schema.String,
   reasoning: ReasoningEffort,
   /** Tried in order when `model` cannot answer. */
-  backupModels: Schema.Array(Schema.String).check(Schema.isMaxLength(MAX_BACKUP_MODELS)),
+  backupModels: Schema.Array(ModelChoice).check(Schema.isMaxLength(MAX_BACKUP_MODELS)),
   /** A paused agent does not answer. */
   active: Schema.Boolean,
   permissions: AgentPermissions,
@@ -111,16 +112,26 @@ export type AgentSettings = typeof AgentSettings.Type
 export const Agent = Schema.Struct({
   id: AgentId,
   ...AgentSettings.fields,
+  /** Pinned employees stay at the top of the team. */
+  pinned: Schema.Boolean,
   createdAt: Schema.String
 })
 export type Agent = typeof Agent.Type
+
+export const PinAgent = Schema.Struct({
+  pinned: Schema.Boolean
+})
+export type PinAgent = typeof PinAgent.Type
 
 export const CreateAgent = Schema.Struct({
   name: Schema.NonEmptyString,
   job: Schema.NonEmptyString,
   color: Schema.NonEmptyString,
   shape: AgentShape,
-  face: AgentFace
+  face: AgentFace,
+  provider: Schema.optionalKey(ProviderId),
+  model: Schema.optionalKey(Schema.String),
+  reasoning: Schema.optionalKey(ReasoningEffort)
 })
 export type CreateAgent = typeof CreateAgent.Type
 
@@ -184,8 +195,9 @@ export const defaultSettings = (input: CreateAgent): AgentSettings => ({
   ...input,
   ...(jobPresets[input.job] ?? frontDesk),
   instructions: "",
-  model: "",
-  reasoning: "default",
+  provider: input.provider ?? "api",
+  model: input.model ?? "",
+  reasoning: input.reasoning ?? "default",
   backupModels: [],
   active: true,
   hours: {

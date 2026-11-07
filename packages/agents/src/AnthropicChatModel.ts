@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { ModelFailed, ModelNotConfigured, type ModelOption, ModelRefused } from "@scope-bot/domain"
 import { Effect, Layer, Option, Redacted } from "effect"
-import { ChatModel, type ChatRequest } from "./ChatModel.ts"
+import { ChatModel, type ChatRequest, type ChatTurn } from "./ChatModel.ts"
 import { llmConfig } from "./LlmConfig.ts"
 
 const REQUEST_TIMEOUT_MS = 60_000
@@ -25,6 +25,17 @@ const toFailure = (error: unknown) => {
   return new ModelFailed({ reason: "unknown" })
 }
 
+const toContent = (turn: ChatTurn) =>
+  turn.images === undefined
+    ? turn.text
+    : [
+        ...turn.images.map((image) => ({
+          type: "image" as const,
+          source: { type: "base64" as const, media_type: image.mediaType, data: image.data }
+        })),
+        ...(turn.text === "" ? [] : [{ type: "text" as const, text: turn.text }])
+      ]
+
 const send = (client: Anthropic, model: string, request: ChatRequest) =>
   Effect.tryPromise({
     try: (signal) =>
@@ -33,7 +44,7 @@ const send = (client: Anthropic, model: string, request: ChatRequest) =>
           model,
           max_tokens: MAX_TOKENS,
           system: request.system,
-          messages: request.turns.map((turn) => ({ role: turn.role, content: turn.text })),
+          messages: request.turns.map((turn) => ({ role: turn.role, content: toContent(turn) })),
           // Short conversational replies do not need deep reasoning unless the business asks for it.
           ...(supportsEffort(model)
             ? { output_config: { effort: request.reasoning === "default" ? ("low" as const) : request.reasoning } }
@@ -53,7 +64,13 @@ const listModels = (client: Anthropic) =>
       const models: Array<ModelOption> = []
       for await (const model of client.models.list(null, { signal })) {
         if (model.lifecycle !== "retired") {
-          models.push({ id: model.id, name: model.display_name, group: "", free: false })
+          models.push({
+            id: model.id,
+            name: model.display_name,
+            group: "",
+            free: false,
+            efforts: supportsEffort(model.id) ? ["low", "medium", "high"] : []
+          })
         }
       }
       return models

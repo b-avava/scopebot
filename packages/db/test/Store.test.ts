@@ -7,6 +7,7 @@ import { Store } from "../src/Store.ts"
 const agent: Agent = {
   ...defaultSettings({ name: "Nino", job: "Front desk", color: "#000000", shape: "squircle", face: "neutral" }),
   id: AgentId.make("nino"),
+  pinned: false,
   createdAt: "2026-11-04T00:00:00.000Z"
 }
 
@@ -47,11 +48,20 @@ describe("Store", () => {
               face: "happy",
               instructions: "Keep me",
               model: "",
+              backupModels: ["older-model"],
               active: false,
               createdAt: "2026-11-04T00:00:00.000Z"
             }
           ],
-          messages: [],
+          messages: [
+            {
+              id: "m",
+              agentId: "old",
+              role: "customer",
+              text: "Hello",
+              createdAt: "2026-11-04T00:00:00.000Z"
+            }
+          ],
           actions: []
         })
       )
@@ -64,6 +74,18 @@ describe("Store", () => {
       assert.strictEqual(upgraded?.shape, "circle")
       assert.strictEqual(upgraded?.face, "happy")
       assert.strictEqual(upgraded?.permissions.offerDiscounts, "approve")
+      assert.strictEqual(upgraded?.provider, "api")
+
+      const stored = Store.use((store) =>
+        Effect.all([store.conversations(AgentId.make("old")), store.messages(AgentId.make("old"))])
+      ).pipe(Effect.provide(Store.layerFile(filePath)))
+      const [conversations, messages] = yield* stored
+      assert.strictEqual(conversations[0]?.title, "Chat")
+      assert.strictEqual(messages[0]?.conversationId, conversations[0]?.id)
+      assert.isNull(
+        (yield* Store.use((store) => store.preferences).pipe(Effect.provide(Store.layerFile(filePath)))).defaultProvider
+      )
+      assert.deepStrictEqual(upgraded?.backupModels, [{ provider: "api", model: "older-model" }])
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
   )
 })

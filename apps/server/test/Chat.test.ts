@@ -1,19 +1,19 @@
 import { assert, layer } from "@effect/vitest"
-import { AgentChat, Agents, ChatModel } from "@scope-bot/agents"
+import { AgentChat, Agents, ChatModel, ModelProviders } from "@scope-bot/agents"
 import { Api } from "@scope-bot/contracts"
 import { Store } from "@scope-bot/db"
-import { AgentId, ModelNotConfigured } from "@scope-bot/domain"
+import { AgentId, ConversationId, ModelNotConfigured } from "@scope-bot/domain"
 import { Effect, Layer } from "effect"
 import { HttpServer } from "effect/http"
 import { HttpApiTest } from "effect/http-api"
-import { AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers } from "../src/Http.ts"
+import { AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers, SearchApiHandlers } from "../src/Http.ts"
 
 const model = Layer.succeed(
   ChatModel,
   ChatModel.of({
     models: Effect.succeed({
       defaultModel: "some-model",
-      models: [{ id: "some-model", name: "Some model", group: "", free: false }]
+      models: [{ id: "some-model", name: "Some model", group: "", free: false, efforts: [] }]
     }),
     reply: (request) =>
       request.turns.at(-1)?.text === "no key"
@@ -24,13 +24,18 @@ const model = Layer.succeed(
 
 const services = AgentChat.layer.pipe(
   Layer.provideMerge(Agents.layer),
+  Layer.provideMerge(ModelProviders.layerApiOnly),
   Layer.provide(model),
   Layer.provide(Store.layerMemory)
 )
 
-const handlers = Layer.mergeAll(AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers).pipe(Layer.provide(services))
+const handlers = Layer.mergeAll(AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers, SearchApiHandlers).pipe(
+  Layer.provide(services)
+)
 
-const makeClient = HttpApiTest.groups(Api, ["agents", "chat", "models"])
+const chatOf = (agent: { readonly id: AgentId }) => ({ id: agent.id, conversationId: ConversationId.make(agent.id) })
+
+const makeClient = HttpApiTest.groups(Api, ["agents", "chat", "models", "search"])
 
 layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API", (it) => {
   it.effect("creates an agent, changes its settings and chats with it", () =>
@@ -49,10 +54,10 @@ layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API",
       })
       assert.strictEqual(updated.instructions, "Open at 9:00")
 
-      const sent = yield* client.chat.send({ params: { id: agent.id }, payload: { text: "Hi" } })
+      const sent = yield* client.chat.send({ params: chatOf(agent), payload: { text: "Hi" } })
       assert.strictEqual(sent.reply?.role, "agent")
 
-      const messages = yield* client.chat.messages({ params: { id: agent.id } })
+      const messages = yield* client.chat.messages({ params: chatOf(agent) })
       assert.deepStrictEqual(
         messages.map((message) => message.text),
         ["Hi", "Hello!"]
@@ -66,12 +71,36 @@ layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API",
     })
   )
 
+  it.effect("pins an employee and finds what it said", () =>
+    Effect.gen(function* () {
+      const client = yield* makeClient
+      const agent = yield* client.agents.create({
+        payload: { name: "Lasha", job: "Sales", color: "#000", shape: "circle", face: "happy" }
+      })
+      assert.isFalse(agent.pinned)
+
+      const pinned = yield* client.agents.pin({ params: { id: agent.id }, payload: { pinned: true } })
+      assert.isTrue(pinned.pinned)
+
+      const settings = yield* client.agents.update({ params: { id: agent.id }, payload: { ...pinned, tone: "brief" } })
+      assert.isTrue(settings.pinned)
+
+      yield* client.chat.send({ params: chatOf(agent), payload: { text: "Find the blue invoice" } })
+      const last = yield* client.agents.lastMessages()
+      assert.strictEqual(last.find((message) => message.agentId === agent.id)?.text, "Hello!")
+
+      const hits = yield* client.search.run({ query: { q: "BLUE invoice" } })
+      assert.isTrue(hits.some((hit) => hit.kind === "message" && hit.agentId === agent.id))
+    })
+  )
+
   it.effect("lists the provider's models", () =>
     Effect.gen(function* () {
       const client = yield* makeClient
-      const catalog = yield* client.models.list()
-      assert.strictEqual(catalog.defaultModel, "some-model")
-      assert.strictEqual(catalog.models[0]?.name, "Some model")
+      const providers = yield* client.models.list()
+      assert.strictEqual(providers[0]?.status, "connected")
+      assert.strictEqual(providers[0]?.defaultModel, "some-model")
+      assert.strictEqual(providers[0]?.models[0]?.name, "Some model")
     })
   )
 
@@ -84,13 +113,15 @@ layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API",
 
       const notConfigured = yield* client.chat
         .send({
-          params: { id: agent.id },
+          params: chatOf(agent),
           payload: { text: "no key" }
         })
         .pipe(Effect.flip)
       assert.strictEqual(notConfigured._tag, "ModelNotConfigured")
 
-      const notFound = yield* client.chat.messages({ params: { id: AgentId.make("missing") } }).pipe(Effect.flip)
+      const notFound = yield* client.chat
+        .messages({ params: chatOf({ id: AgentId.make("missing") }) })
+        .pipe(Effect.flip)
       assert.strictEqual(notFound._tag, "AgentNotFound")
     })
   )

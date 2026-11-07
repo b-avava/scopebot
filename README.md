@@ -145,7 +145,7 @@ The first `pnpm dev` downloads the Electron binary, so it takes longer. Stopping
 
 To add a beUI component, run `pnpm dlx shadcn@latest add @beui/<slug>` inside `packages/ui`.
 
-Copy `.env.example` to `.env` and set `LLM_PROVIDER` and `LLM_API_KEY`, otherwise agents cannot answer. Both Anthropic and any OpenAI-style API work; see the comments in that file. Check the server with `GET /health`; the API description is at `GET /openapi.json`. The server listens on `127.0.0.1` only, because the API has no authentication yet. Data is kept in `apps/server/.data/` until PostgreSQL is set up.
+Agents answer through Claude Code or Codex if you are signed in to them on this computer, which is meant for trying things out (see ADR 0007). For an API key, copy `.env.example` to `.env` and set `LLM_PROVIDER` and `LLM_API_KEY`. Both Anthropic and any OpenAI-style API work; see the comments in that file. Check the server with `GET /health`; the API description is at `GET /openapi.json`. The server listens on `127.0.0.1` only, because the API has no authentication yet. Data is kept in `apps/server/.data/` until PostgreSQL is set up.
 
 ---
 

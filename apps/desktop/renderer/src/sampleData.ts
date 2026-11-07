@@ -13,34 +13,20 @@ export const timeZones = [
   "UTC"
 ] as const
 
-export const avatarShapes: ReadonlyArray<AgentShape> = [
-  "circle",
-  "pebble",
-  "squircle",
-  "capsule",
-  "triangle",
-  "hexagon",
-  "cloud",
-  "droplet"
-]
-
-export const avatarFaces: ReadonlyArray<AgentFace> = [
-  "neutral",
-  "attentive",
-  "surprised",
-  "excited",
-  "happy",
-  "laughing",
-  "angry",
-  "sad",
-  "scared",
-  "suspicious",
-  "confused",
-  "curious",
-  "proud",
-  "shy",
-  "unimpressed",
-  "sleepy"
+/** A character is a shape with its own face, picked as one thing. */
+export const avatarCharacters: ReadonlyArray<{ readonly shape: AgentShape; readonly face: AgentFace }> = [
+  { shape: "circle", face: "neutral" },
+  { shape: "squircle", face: "attentive" },
+  { shape: "triangle", face: "curious" },
+  { shape: "hexagon", face: "surprised" },
+  { shape: "pebble", face: "excited" },
+  { shape: "capsule", face: "happy" },
+  { shape: "cloud", face: "shy" },
+  { shape: "droplet", face: "proud" },
+  { shape: "circle", face: "sleepy" },
+  { shape: "squircle", face: "laughing" },
+  { shape: "hexagon", face: "confused" },
+  { shape: "pebble", face: "unimpressed" }
 ]
 
 export const avatarColors = [

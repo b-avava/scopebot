@@ -1,7 +1,7 @@
 import { createServer } from "node:http"
 import { NodeHttpServer, NodeRuntime, NodeServices } from "@effect/platform-node"
-import { AgentChat, Agents, ConfiguredChatModel } from "@scope-bot/agents"
-import { Store } from "@scope-bot/db"
+import { AgentChat, Agents, ConfiguredChatModel, LocalCli, ModelProviders } from "@scope-bot/agents"
+import { ProviderKeys, Store } from "@scope-bot/db"
 import { Config, Effect, Layer } from "effect"
 import { FetchHttpClient, HttpRouter } from "effect/http"
 import { ApiRoutes } from "./Http.ts"
@@ -22,9 +22,20 @@ const StoreLayer = Layer.unwrap(
   })
 ).pipe(Layer.provide(NodeServices.layer))
 
+const KeysLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const filePath = yield* Config.String("SCOPE_BOT_KEYS_FILE").pipe(Config.withDefault(".data/provider-keys.json"))
+    return ProviderKeys.layerFile(filePath)
+  })
+).pipe(Layer.provide(NodeServices.layer))
+
 const AgentServices = AgentChat.layer.pipe(
   Layer.provideMerge(Agents.layer),
-  Layer.provide(ConfiguredChatModel.pipe(Layer.provide(FetchHttpClient.layer))),
+  Layer.provideMerge(ModelProviders.layer),
+  Layer.provide(ConfiguredChatModel),
+  Layer.provide(FetchHttpClient.layer),
+  Layer.provide(KeysLayer),
+  Layer.provide(LocalCli.layer.pipe(Layer.provide(NodeServices.layer))),
   Layer.provide(StoreLayer)
 )
 

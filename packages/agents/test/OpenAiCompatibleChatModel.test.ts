@@ -65,16 +65,30 @@ describe("OpenAiCompatibleChatModel", () => {
     }).pipe(Effect.provide(makeLayer(configured, () => completion("Hello"), seen)))
   })
 
+  it.effect("sends photos as data URLs", () => {
+    const seen: Array<HttpClientRequest.HttpClientRequest> = []
+    const photo = { mediaType: "image/jpeg" as const, data: "cGhvdG8=" }
+    return Effect.gen(function* () {
+      yield* ChatModel.use((model) =>
+        model.reply({ ...request, turns: [{ role: "user", text: "Look", images: [photo] }] })
+      )
+      const body = seen[0]?.body
+      const text = body?._tag === "Uint8Array" ? new TextDecoder().decode(body.body) : ""
+      assert.include(text, "data:image/jpeg;base64,cGhvdG8=")
+    }).pipe(Effect.provide(makeLayer(configured, () => completion("Hello"), seen)))
+  })
+
   it.effect("lists chat models with free ones first, grouped by lab", () => {
+    const efforts = ["low", "medium", "high"] as const
     const seen: Array<HttpClientRequest.HttpClientRequest> = []
     return Effect.gen(function* () {
       const catalog = yield* ChatModel.use((model) => model.models)
       assert.strictEqual(seen[0]?.url, "https://llm.test/v1/models")
       assert.strictEqual(catalog.defaultModel, "some-model")
       assert.deepStrictEqual(catalog.models, [
-        { id: "meta/llama:free", name: "Llama", group: "meta", free: true },
-        { id: "gpt-x", name: "gpt-x", group: "", free: false },
-        { id: "acme/big", name: "Acme: Big", group: "acme", free: false }
+        { id: "meta/llama:free", name: "Llama", group: "meta", free: true, efforts },
+        { id: "gpt-x", name: "gpt-x", group: "", free: false, efforts },
+        { id: "acme/big", name: "Acme: Big", group: "acme", free: false, efforts }
       ])
     }).pipe(
       Effect.provide(
