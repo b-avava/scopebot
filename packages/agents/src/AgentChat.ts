@@ -465,10 +465,14 @@ export class AgentChat extends Context.Service<
         customerMessage: ChatMessage,
         text: string,
         answer: ChatReply,
-        channel: ChannelDelivery | undefined
+        channel: ChannelDelivery | undefined,
+        handoff: string | null
       ) =>
         Effect.gen(function* () {
-          const extra = channel === undefined ? {} : { delivery: channel.replyAs }
+          const extra = {
+            ...(channel === undefined ? {} : { delivery: channel.replyAs }),
+            ...(handoff === null ? {} : { handoff })
+          }
           const reply = yield* newMessage(agent.id, customerMessage.conversationId, "agent", text, [], extra)
           yield* store.appendMessage(reply)
           yield* audit(agent, customerMessage, {
@@ -492,10 +496,12 @@ export class AgentChat extends Context.Service<
         Effect.gen(function* () {
           const answer = yield* answerCustomer(agent, customerMessage, messages, now)
           const parsed = parseReply(answer.text)
+          // A draft carries its handoff, so a person who throws it away keeps the employee answering.
+          const carried = channel?.replyAs === "draft" && parsed.text !== "" ? parsed.handoffReason : null
           const reply =
-            parsed.text === "" ? null : yield* saveReply(agent, customerMessage, parsed.text, answer, channel)
+            parsed.text === "" ? null : yield* saveReply(agent, customerMessage, parsed.text, answer, channel, carried)
 
-          if (parsed.handoffReason !== null) {
+          if (parsed.handoffReason !== null && carried === null) {
             yield* escalate(agent, customerMessage, parsed.handoffReason)
             return { customerMessage, reply, outcome: "escalated" as const }
           }

@@ -75,6 +75,8 @@ export class WhatsApp extends Context.Service<
       text?: string
     ): Effect.Effect<ChatMessage, DraftNotFound | WhatsAppNotLinked | WhatsAppSendFailed>
     discardDraft(id: MessageId): Effect.Effect<ChatMessage, DraftNotFound>
+    /** Gives a chat a person took over back to the employee. */
+    resume(chatId: ConversationId): Effect.Effect<void, ConversationNotFound>
   }
 >()("@scope-bot/agents/WhatsApp") {
   static readonly layer = Layer.effect(
@@ -358,14 +360,15 @@ export class WhatsApp extends Context.Service<
         chats: inbox.chats.pipe(
           Effect.map((chats) =>
             chats.map(
-              ({ conversation, contact, lastMessage, drafts }): WhatsAppChat => ({
+              ({ conversation, contact, lastMessage, drafts, handoff }): WhatsAppChat => ({
                 id: conversation.id,
                 agentId: conversation.agentId,
                 contactId: contact?.id ?? null,
                 name: contact?.name ?? conversation.title,
                 phone: phoneOf(conversation.address ?? ""),
                 lastMessage,
-                drafts
+                drafts,
+                handoff
               })
             )
           )
@@ -380,7 +383,8 @@ export class WhatsApp extends Context.Service<
           const business = yield* requireLinked
           return yield* inbox.sendDraft(id, text, sendVia(business))
         }),
-        discardDraft: inbox.discardDraft
+        discardDraft: inbox.discardDraft,
+        resume: inbox.resume
       })
     })
   )

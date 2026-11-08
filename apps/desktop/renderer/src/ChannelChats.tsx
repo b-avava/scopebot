@@ -1,5 +1,5 @@
 import type { Agent, ChatMessage } from "@scope-bot/domain"
-import { ArrowUp, Search, User } from "lucide-react"
+import { ArrowUp, Clock, Search, User } from "lucide-react"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import type { BridgeResult } from "../../preload/bridge.ts"
 import { EmployeeAvatar } from "./Avatar.tsx"
@@ -18,6 +18,10 @@ export interface ChatRow {
   readonly via: string | null
   readonly lastMessage: ChatMessage | null
   readonly drafts: number
+  /** Why a person has the chat now, or null while the employee answers. */
+  readonly handoff: string | null
+  /** On channels that limit how long a business may answer: until when it still can. */
+  readonly answerUntil?: string | null
 }
 
 /** What a channel gives the chat screens. */
@@ -31,6 +35,7 @@ export interface ChannelChatApi {
   send(chatId: string, text: string): Promise<BridgeResult<ChatMessage>>
   sendDraft(id: string, text: string | null): Promise<BridgeResult<ChatMessage>>
   discardDraft(id: string): Promise<BridgeResult<ChatMessage>>
+  resume(chatId: string): Promise<BridgeResult<void>>
 }
 
 const initials = (name: string) =>
@@ -63,11 +68,27 @@ const timeOf = (iso: string) => {
     : date.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
 }
 
+const hoursLeft = (until: string) => Math.ceil((Date.parse(until) - Date.now()) / 3_600_000)
+
+/** Whether the channel still lets the business answer, with the time left. */
+const AnswerWindow = ({ until }: { readonly until: string }) => {
+  const hours = hoursLeft(until)
+  return (
+    <span className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs font-medium">
+      <Clock className="size-3.5 text-muted-foreground" />
+      {hours > 0 ? `Answer within ${hours} h` : "Only a person can answer"}
+    </span>
+  )
+}
+
 const preview = (message: ChatMessage | null) => {
   if (message === null) return ""
   if (message.role === "person") return `You: ${message.text}`
   return message.text
 }
+
+const closed = (chat: ChatRow) =>
+  chat.answerUntil !== undefined && chat.answerUntil !== null && Date.parse(chat.answerUntil) < Date.now()
 
 const ChatRow = ({
   chat,
@@ -96,11 +117,21 @@ const ChatRow = ({
           </span>
         )}
       </span>
-      {chat.drafts > 0 ? (
+      {chat.drafts > 0 && (
         <span className="truncate text-[13px] font-medium text-amber-600 dark:text-amber-400">
           Draft waits for your OK
         </span>
-      ) : (
+      )}
+      {chat.drafts === 0 && chat.handoff !== null && (
+        <span className="truncate text-[13px] text-muted-foreground">
+          <span className="font-medium text-foreground">With a person</span>
+          {chat.via === null ? "" : ` · ${chat.via}`} · {preview(chat.lastMessage)}
+        </span>
+      )}
+      {chat.drafts === 0 && chat.handoff === null && closed(chat) && (
+        <span className="truncate text-[13px] text-muted-foreground">Window closed · only a person can answer</span>
+      )}
+      {chat.drafts === 0 && chat.handoff === null && !closed(chat) && (
         <span className="truncate text-[13px] text-muted-foreground">
           {chat.contactId === null && chat.handle !== "" ? "New contact · " : ""}
           {chat.via === null ? "" : `${chat.via} · `}
@@ -217,6 +248,12 @@ const Draft = ({
         </span>
         <span className="text-xs text-muted-foreground">Not sent yet</span>
       </div>
+      {message.handoff !== undefined && (
+        <p className="text-xs text-muted-foreground">
+          Sending it also hands the chat to a person: {message.handoff}. Not sending it keeps{" "}
+          {agent?.name ?? "the employee"} answering.
+        </p>
+      )}
       {editing === null ? (
         <p className="whitespace-pre-wrap text-sm leading-5">{message.text}</p>
       ) : (
@@ -349,6 +386,7 @@ export const Conversation = ({
             {chat.handle === "" ? api.hiddenHandle : chat.handle}
           </span>
         </div>
+        {chat.answerUntil !== undefined && chat.answerUntil !== null && <AnswerWindow until={chat.answerUntil} />}
         {agent !== undefined && (
           <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
             <EmployeeAvatar agent={agent} size={20} />
@@ -376,6 +414,23 @@ export const Conversation = ({
         ))}
         <div ref={end} />
       </div>
+      {chat.handoff !== null && (
+        <div className="mx-8 mb-3 flex items-center gap-3 rounded-card border bg-field px-4 py-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <p className="text-sm font-medium">{agent?.name ?? "The employee"} handed this chat to a person</p>
+            <p className="text-[13px] text-muted-foreground">
+              {chat.handoff}. {agent?.name ?? "The employee"} stays quiet until you give it back.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void api.resume(chat.id).then(after)}
+            className="h-8 shrink-0 rounded-control-sm border px-3 text-[13px] font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Give it back to {agent?.name ?? "the employee"}
+          </button>
+        </div>
+      )}
       {error !== null && (
         <p role="alert" className="px-8 pb-2 text-sm text-destructive">
           {error}

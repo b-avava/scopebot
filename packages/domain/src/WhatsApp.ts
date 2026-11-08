@@ -50,7 +50,9 @@ export const WhatsAppChat = Schema.Struct({
   /** Empty when WhatsApp hides the number. */
   phone: Schema.String,
   lastMessage: Schema.NullOr(ChatMessage),
-  drafts: Schema.Int
+  drafts: Schema.Int,
+  /** Why a person has the chat now. The employee stays quiet until it is given back. */
+  handoff: Schema.NullOr(Schema.String)
 })
 export type WhatsAppChat = typeof WhatsAppChat.Type
 

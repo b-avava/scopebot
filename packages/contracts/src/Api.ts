@@ -45,6 +45,14 @@ import {
   EmailTaken,
   Forbidden,
   HealthStatus,
+  InstagramChat,
+  InstagramLogin,
+  InstagramNeedsAgent,
+  InstagramNotConfigured,
+  InstagramNotConnected,
+  InstagramSendFailed,
+  InstagramStatus,
+  InstagramWindowClosed,
   Invite,
   InviteInvalid,
   JoinTeam,
@@ -552,6 +560,10 @@ export class WhatsAppApi extends HttpApiGroup.make("whatsapp")
       params: { id: MessageId },
       success: ChatMessage,
       error: DraftNotFound
+    }),
+    HttpApiEndpoint.post("resume", "/chats/:id/resume", {
+      params: { id: ConversationId },
+      error: ConversationNotFound
     })
   )
   .prefix("/whatsapp")
@@ -601,9 +613,68 @@ export class TelegramApi extends HttpApiGroup.make("telegram")
       params: { id: MessageId },
       success: ChatMessage,
       error: DraftNotFound
+    }),
+    HttpApiEndpoint.post("resume", "/chats/:id/resume", {
+      params: { id: ConversationId },
+      error: ConversationNotFound
     })
   )
   .prefix("/telegram")
+  .middleware(Authorization) {}
+
+/** The Instagram account of the business. Connecting and settings are for owners and admins. */
+export class InstagramApi extends HttpApiGroup.make("instagram")
+  .add(
+    HttpApiEndpoint.get("status", "/", {
+      success: InstagramStatus
+    }),
+    HttpApiEndpoint.put("saveSettings", "/settings", {
+      payload: ChannelSettings,
+      success: InstagramStatus,
+      error: [AgentNotFound, Forbidden]
+    }),
+    HttpApiEndpoint.post("login", "/login", {
+      success: InstagramLogin,
+      error: [InstagramNotConfigured, InstagramNeedsAgent, Forbidden]
+    }),
+    HttpApiEndpoint.post("checkReachable", "/check", {
+      success: InstagramStatus
+    }),
+    HttpApiEndpoint.delete("disconnect", "/account", {
+      success: InstagramStatus,
+      error: Forbidden
+    }),
+    HttpApiEndpoint.get("chats", "/chats", {
+      success: Schema.Array(InstagramChat)
+    }),
+    HttpApiEndpoint.get("messages", "/chats/:id/messages", {
+      params: { id: ConversationId },
+      success: Schema.Array(ChatMessage),
+      error: ConversationNotFound
+    }),
+    HttpApiEndpoint.post("send", "/chats/:id/messages", {
+      params: { id: ConversationId },
+      payload: SendWhatsApp,
+      success: ChatMessage,
+      error: [ConversationNotFound, InstagramNotConnected, InstagramWindowClosed, InstagramSendFailed]
+    }),
+    HttpApiEndpoint.post("sendDraft", "/drafts/:id/send", {
+      params: { id: MessageId },
+      payload: SendDraft,
+      success: ChatMessage,
+      error: [DraftNotFound, InstagramNotConnected, InstagramWindowClosed, InstagramSendFailed]
+    }),
+    HttpApiEndpoint.post("discardDraft", "/drafts/:id/discard", {
+      params: { id: MessageId },
+      success: ChatMessage,
+      error: DraftNotFound
+    }),
+    HttpApiEndpoint.post("resume", "/chats/:id/resume", {
+      params: { id: ConversationId },
+      error: ConversationNotFound
+    })
+  )
+  .prefix("/instagram")
   .middleware(Authorization) {}
 
 export class Api extends HttpApi.make("scope-bot")
@@ -627,4 +698,5 @@ export class Api extends HttpApi.make("scope-bot")
   .add(ProvidersApi)
   .add(WhatsAppApi)
   .add(TelegramApi)
+  .add(InstagramApi)
   .annotateMerge(OpenApi.annotations({ title: "Scope Bot API" })) {}

@@ -125,7 +125,11 @@ A conversation on a channel is a chat with one customer, not a tab:
 | `address`   | Where to answer: the WhatsApp chat id, or `bot:<chat>` and `business:<connection>:<chat>` on Telegram. Unique per channel |
 | `contactId` | The customer, when known. A new sender becomes one unless only contacts get answers                                       |
 
-Messages in such a chat have a `delivery`: `draft` waits for a person, then `sending`, `sent` or `failed`; `discarded` was thrown away. `externalId` is the id the channel gave the message, so one is never stored twice. Only sent messages count as said to the customer, for the model too. A channel chat shares no memory with other chats, and search leaves it out.
+Messages in such a chat have a `delivery`: `draft` waits for a person, then `sending`, `sent` or `failed`; `discarded` was thrown away. `externalId` is the id the channel gave the message, so one is never stored twice. Only sent messages count as said to the customer, for the model too. A draft can carry a `handoff`: the reason the employee wants a person, which takes effect when the draft is sent. A channel chat shares no memory with other chats, and search leaves it out.
+
+### Instagram account
+
+One professional account per business, through the official Instagram API with Instagram Login (see ADR 0017): the same settings as the other channels, the access token (encrypted) and when it expires, the account's id that messages from Instagram name, its username and name. A chat's address is the sender's Instagram-scoped id.
 
 ### Telegram bot
 

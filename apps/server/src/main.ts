@@ -9,19 +9,29 @@ import {
   Contacts,
   Deals,
   Departments,
+  Instagram,
   LocalCli,
   ModelProviders,
   Services,
   Telegram,
   WhatsApp
 } from "@scope-bot/agents"
-import { Accounts, databaseLayer, ProviderKeys, pgStoreLayer, TelegramStorage, WhatsAppStorage } from "@scope-bot/db"
-import { BaileysClientLayer, TelegramClientLayer } from "@scope-bot/integrations"
-import { Config, Effect, Layer } from "effect"
+import {
+  Accounts,
+  databaseLayer,
+  InstagramStorage,
+  ProviderKeys,
+  pgStoreLayer,
+  TelegramStorage,
+  WhatsAppStorage
+} from "@scope-bot/db"
+import { BaileysClientLayer, InstagramClientLayer, InstagramSetup, TelegramClientLayer } from "@scope-bot/integrations"
+import { Config, Effect, Layer, Option } from "effect"
 import { FetchHttpClient, HttpRouter } from "effect/http"
 import { SqlClient } from "effect/sql"
 import { Auth } from "./Auth.ts"
 import { ApiRoutes } from "./Http.ts"
+import { InstagramRoutes } from "./InstagramRoutes.ts"
 import { AuthorizationLayer } from "./Security.ts"
 
 const DatabaseLayer = Layer.unwrap(Config.Redacted("DATABASE_URL").pipe(Effect.map(databaseLayer)))
@@ -53,6 +63,28 @@ const TelegramStorageLayer = Layer.unwrap(
   Config.Redacted("SCOPE_BOT_SECRET").pipe(Effect.map(TelegramStorage.layerPostgres))
 ).pipe(Layer.provide(DatabaseLayer))
 
+const InstagramStorageLayer = Layer.unwrap(
+  Config.Redacted("SCOPE_BOT_SECRET").pipe(Effect.map(InstagramStorage.layerPostgres))
+).pipe(Layer.provide(DatabaseLayer))
+
+// A Meta app is optional: without all four values Instagram says it is not set up on this server.
+const InstagramSetupLayer = Layer.effect(
+  InstagramSetup,
+  Effect.gen(function* () {
+    const appId = yield* Config.option(Config.String("INSTAGRAM_APP_ID"))
+    const appSecret = yield* Config.option(Config.Redacted("INSTAGRAM_APP_SECRET"))
+    const verifyToken = yield* Config.option(Config.Redacted("INSTAGRAM_VERIFY_TOKEN"))
+    const publicUrl = yield* Config.option(Config.String("PUBLIC_URL"))
+    const all = Option.all({ appId, appSecret, verifyToken, publicUrl })
+    return InstagramSetup.of({
+      app: Option.match(all, {
+        onNone: () => null,
+        onSome: (app) => ({ ...app, publicUrl: app.publicUrl.replace(/\/+$/, "") })
+      })
+    })
+  })
+)
+
 const AgentServices = AgentChat.layer.pipe(
   Layer.provideMerge(Agents.layer),
   Layer.provideMerge(Contacts.layer),
@@ -72,7 +104,12 @@ const AgentServices = AgentChat.layer.pipe(
 // Linked numbers reconnect and bots start listening as soon as these layers are built.
 const ChannelServices = Layer.mergeAll(
   WhatsApp.layer.pipe(Layer.provide(WhatsAppStorageLayer), Layer.provide(BaileysClientLayer)),
-  Telegram.layer.pipe(Layer.provide(TelegramStorageLayer), Layer.provide(TelegramClientLayer))
+  Telegram.layer.pipe(Layer.provide(TelegramStorageLayer), Layer.provide(TelegramClientLayer)),
+  Instagram.layer.pipe(
+    Layer.provide(InstagramStorageLayer),
+    Layer.provide(InstagramClientLayer),
+    Layer.provide(InstagramSetupLayer)
+  )
 ).pipe(Layer.provide(AgentServices), Layer.provide(StoreLayer))
 
 const AuthServices = AuthorizationLayer.pipe(
@@ -81,7 +118,7 @@ const AuthServices = AuthorizationLayer.pipe(
   Layer.provide(AgentServices)
 )
 
-const Main = HttpRouter.serve(ApiRoutes).pipe(
+const Main = HttpRouter.serve(Layer.mergeAll(ApiRoutes, InstagramRoutes)).pipe(
   Layer.provide(AuthServices),
   Layer.provide(ChannelServices),
   Layer.provide(AgentServices),

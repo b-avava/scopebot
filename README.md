@@ -126,7 +126,7 @@ scope-bot/
 
 **Dependency rule:** `domain` depends on nothing internal. `contracts` depends on `domain`. Apps depend on packages, never the other way round. Integrations never import from apps.
 
-The tree above is the target layout. Packages are added when the first feature needs them. Today the repository contains `apps/server`, `apps/desktop` and the `domain`, `contracts`, `db`, `agents`, `integrations` and `ui` packages. `integrations` holds WhatsApp and Telegram so far.
+The tree above is the target layout. Packages are added when the first feature needs them. Today the repository contains `apps/server`, `apps/desktop` and the `domain`, `contracts`, `db`, `agents`, `integrations` and `ui` packages. `integrations` holds WhatsApp, Telegram and Instagram so far.
 
 ### Getting started
 
@@ -218,6 +218,7 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 
 - **WhatsApp:** for now a number links as a device, the way WhatsApp Web does, through Baileys (see ADR 0015). WhatsApp can limit or ban a number it sees as automated, so the screen warns about it and a number kept for Scope Bot is the safe choice. The official WhatsApp Business API stays the goal for businesses that cannot take that risk.
 - **Telegram:** the official Bot API (see ADR 0016). Customers write to the business's bot, and with Telegram Business also to the business's own account. The server asks Telegram for updates, so it needs no public address.
+- **Instagram:** Direct messages through the official Instagram API with Instagram Login (see ADR 0017). It needs a Meta app on the server and a public HTTPS address, because Instagram sends new messages to a webhook. A business may answer within a day of the customer's last message, and a person within a week.
 - **Telephony (phase 2):** SIP integration + realtime voice. Call-recording consent must be handled per jurisdiction.
 - **Payments (phase 2+):** pluggable providers; Georgia and Russia require different providers.
 - **Bitrix24 import:** contacts, companies, deals, stages, activities. A key selling point: "move from Bitrix in a day without losing data". Must be idempotent and resumable.

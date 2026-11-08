@@ -51,15 +51,16 @@ const newContact = (message: InboxMessage, settings: ChannelSettings, channel: C
   channels: {
     phone: "",
     whatsapp: message.phone === null ? "" : `+${message.phone}`,
-    telegram: message.username === null ? "" : `@${message.username}`
+    telegram: channel === "telegram" && message.username !== null ? `@${message.username}` : ""
   },
   ownerId: settings.agentId,
-  source: channel === "whatsapp" ? "WhatsApp" : "Telegram"
+  source: channelNames[channel]
 })
 
 const isToday = (iso: string, now: Date) => iso.slice(0, 10) === now.toISOString().slice(0, 10)
 
-const sameCustomer = (contact: Contact, message: InboxMessage) => {
+/** Contacts keep a number and a Telegram username, so only those find a person again. */
+const sameCustomer = (contact: Contact, message: InboxMessage, channel: Channel) => {
   if (message.phone !== null) {
     const number = message.phone
     return (
@@ -67,14 +68,20 @@ const sameCustomer = (contact: Contact, message: InboxMessage) => {
       (contact.channels.whatsapp === "" && digits(contact.channels.phone) === number)
     )
   }
-  return message.username !== null && handleOf(contact.channels.telegram) === message.username.toLowerCase()
+  return (
+    channel === "telegram" &&
+    message.username !== null &&
+    handleOf(contact.channels.telegram) === message.username.toLowerCase()
+  )
 }
+
+const channelNames: Record<Channel, string> = { whatsapp: "WhatsApp", telegram: "Telegram", instagram: "Instagram" }
 
 const fallbackName = (message: InboxMessage, channel: Channel) => {
   if (message.name.trim() !== "") return message.name.trim()
   if (message.phone !== null) return `+${message.phone}`
   if (message.username !== null) return `@${message.username}`
-  return channel === "whatsapp" ? "WhatsApp customer" : "Telegram customer"
+  return `${channelNames[channel]} customer`
 }
 
 /**
@@ -103,7 +110,14 @@ export const makeInbox = (channel: Channel) =>
 
     const contactFor = (message: InboxMessage, settings: ChannelSettings) =>
       Effect.gen(function* () {
-        const found = Option.fromNullishOr((yield* store.contacts).find((item) => sameCustomer(item, message)))
+        const list = yield* store.contacts
+        // A sender the channel gives no number or username for is known by their chat.
+        const chat = yield* store.findChannelConversation(channel, message.address)
+        const known = Option.flatMap(chat, (item) =>
+          Option.fromNullishOr(list.find((contact) => contact.id === item.contactId))
+        )
+        if (Option.isSome(known)) return known
+        const found = Option.fromNullishOr(list.find((item) => sameCustomer(item, message, channel)))
         if (Option.isSome(found) || settings.audience === "contacts") return found
         return yield* contacts.create(newContact(message, settings, channel)).pipe(Effect.option)
       })
@@ -214,6 +228,19 @@ export const makeInbox = (channel: Channel) =>
         return { message: found.value, conversation }
       })
 
+    const handOver = (message: ChatMessage, reason: string) =>
+      Effect.gen(function* () {
+        yield* store.appendEscalation({
+          id: crypto.randomUUID(),
+          agentId: message.agentId,
+          conversationId: message.conversationId,
+          reason,
+          createdAt: yield* nowIso,
+          resolvedAt: null
+        })
+        yield* audit(message, `Handed to a human: ${reason}`)
+      })
+
     const audit = (message: ChatMessage, summary: string) =>
       nowIso.pipe(
         Effect.flatMap((createdAt) =>
@@ -281,7 +308,15 @@ export const makeInbox = (channel: Channel) =>
             sent,
             changed ? "A person changed the drafted reply and sent it" : "A person sent the drafted reply"
           )
+          // The customer now hears that a colleague takes over, so a person does.
+          if (sent.handoff !== undefined) yield* handOver(sent, sent.handoff)
           return sent
+        }),
+      /** Gives a chat a person took over back to the employee. */
+      resume: (chatId: ConversationId) =>
+        Effect.gen(function* () {
+          yield* findChat(chatId)
+          yield* store.resolveEscalation(chatId, yield* nowIso)
         }),
       discardDraft: (id: MessageId) =>
         Effect.gen(function* () {

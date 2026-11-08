@@ -16,7 +16,8 @@ const api: ChannelChatApi = {
   listMessages: (chatId) => window.scopeBot.listWhatsAppMessages(chatId),
   send: (chatId, text) => window.scopeBot.sendWhatsApp(chatId, text),
   sendDraft: (id, text) => window.scopeBot.sendWhatsAppDraft(id, text),
-  discardDraft: (id) => window.scopeBot.discardWhatsAppDraft(id)
+  discardDraft: (id) => window.scopeBot.discardWhatsAppDraft(id),
+  resume: (chatId) => window.scopeBot.resumeWhatsAppChat(chatId)
 }
 
 const Title = ({

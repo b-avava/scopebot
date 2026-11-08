@@ -49,7 +49,12 @@ const errorMessages: Record<BridgeError, string> = {
   "telegram-token-invalid": "Telegram does not know this token. Copy it again from @BotFather.",
   "telegram-not-connected": "The Telegram bot is not connected. Connect it in Settings.",
   "telegram-needs-agent": "Choose the employee who answers first.",
-  "telegram-send-failed": "Telegram did not take the message. Try again in a moment."
+  "telegram-send-failed": "Telegram did not take the message. Try again in a moment.",
+  "instagram-not-configured": "Instagram is not set up on this server yet. It needs a Meta app and a public address.",
+  "instagram-not-connected": "Instagram is not connected. Connect it in Settings.",
+  "instagram-needs-agent": "Choose the employee who answers first.",
+  "instagram-window-closed": "Instagram no longer lets the business answer this chat. The customer has to write again.",
+  "instagram-send-failed": "Instagram did not take the message. Try again in a moment."
 }
 
 export const errorMessage = (error: BridgeError) => errorMessages[error]

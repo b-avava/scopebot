@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron"
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron"
 import { Channels, type Theme } from "../preload/bridge.ts"
 import { ServerConnection } from "./ServerConnection.ts"
 import { StoredSessionToken } from "./StoredSessionToken.ts"
@@ -183,6 +183,42 @@ const main = Effect.gen(function* () {
     Effect.runPromise(server.sendTelegramDraft(id, text))
   )
   ipcMain.handle(Channels.discardTelegramDraft, (_, id: unknown) => Effect.runPromise(server.discardTelegramDraft(id)))
+  ipcMain.handle(Channels.resumeWhatsAppChat, (_, chatId: unknown) =>
+    Effect.runPromise(server.resumeWhatsAppChat(chatId))
+  )
+  ipcMain.handle(Channels.resumeTelegramChat, (_, chatId: unknown) =>
+    Effect.runPromise(server.resumeTelegramChat(chatId))
+  )
+  ipcMain.handle(Channels.getInstagram, () => Effect.runPromise(server.getInstagram))
+  ipcMain.handle(Channels.saveInstagramSettings, (_, settings: unknown) =>
+    Effect.runPromise(server.saveInstagramSettings(settings))
+  )
+  // The browser opens only Instagram's own sign in, whatever the server answered.
+  ipcMain.handle(Channels.startInstagramLogin, async () => {
+    const result = await Effect.runPromise(server.instagramLogin)
+    if (!result.ok) return result
+    if (!result.value.url.startsWith("https://www.instagram.com/")) return { ok: false, error: "invalid" }
+    await shell.openExternal(result.value.url)
+    return { ok: true, value: undefined }
+  })
+  ipcMain.handle(Channels.checkInstagram, () => Effect.runPromise(server.checkInstagram))
+  ipcMain.handle(Channels.disconnectInstagram, () => Effect.runPromise(server.disconnectInstagram))
+  ipcMain.handle(Channels.listInstagramChats, () => Effect.runPromise(server.listInstagramChats))
+  ipcMain.handle(Channels.listInstagramMessages, (_, chatId: unknown) =>
+    Effect.runPromise(server.listInstagramMessages(chatId))
+  )
+  ipcMain.handle(Channels.sendInstagram, (_, chatId: unknown, text: unknown) =>
+    Effect.runPromise(server.sendInstagram(chatId, text))
+  )
+  ipcMain.handle(Channels.sendInstagramDraft, (_, id: unknown, text: unknown) =>
+    Effect.runPromise(server.sendInstagramDraft(id, text))
+  )
+  ipcMain.handle(Channels.discardInstagramDraft, (_, id: unknown) =>
+    Effect.runPromise(server.discardInstagramDraft(id))
+  )
+  ipcMain.handle(Channels.resumeInstagramChat, (_, chatId: unknown) =>
+    Effect.runPromise(server.resumeInstagramChat(chatId))
+  )
 
   ipcMain.handle(Channels.theme, (event, theme: unknown) => {
     if (theme !== "light" && theme !== "dark") return

@@ -15,12 +15,14 @@ import { DeleteAgentModal } from "./DeleteAgentModal.tsx"
 import { type DepartmentEditing, DepartmentModal } from "./DepartmentModal.tsx"
 import { HireScreen } from "./HireScreen.tsx"
 import { errorMessage, useAgents, useDepartments, useServerStatus, useSession, useTheme } from "./hooks.ts"
+import { InstagramScreen } from "./InstagramScreen.tsx"
 import { ModelsProvider } from "./ModelsContext.tsx"
 import { ProvidersScreen } from "./ProvidersScreen.tsx"
 import { SearchPalette } from "./SearchPalette.tsx"
 import { ServicesScreen } from "./ServicesScreen.tsx"
 import { TelegramScreen } from "./TelegramScreen.tsx"
 import { AppFrame } from "./TitleBar.tsx"
+import { useInstagramDrafts } from "./useInstagram.ts"
 import { useTelegramDrafts } from "./useTelegram.ts"
 import { useWhatsAppDrafts } from "./useWhatsApp.ts"
 import { WhatsAppScreen } from "./WhatsAppScreen.tsx"
@@ -33,6 +35,7 @@ type View =
   | { readonly screen: "services" }
   | { readonly screen: "whatsapp" }
   | { readonly screen: "telegram" }
+  | { readonly screen: "instagram" }
   | { readonly screen: "account" }
   | { readonly screen: "providers" }
   | { readonly screen: "agent"; readonly id: string; readonly settings: boolean; readonly target?: SearchHit }
@@ -48,12 +51,13 @@ const Rail = ({
   readonly hasTeam: boolean
   readonly online: boolean
   readonly onOpen: (
-    screen: "business" | "contacts" | "deals" | "services" | "whatsapp" | "telegram" | "account"
+    screen: "business" | "contacts" | "deals" | "services" | "whatsapp" | "telegram" | "instagram" | "account"
   ) => void
 }) => {
   const { approvals } = useCrm()
   const whatsappDrafts = useWhatsAppDrafts(online)
   const telegramDrafts = useTelegramDrafts(online)
+  const instagramDrafts = useInstagramDrafts(online)
 
   return (
     <AppRail
@@ -66,6 +70,8 @@ const Rail = ({
       whatsappDrafts={whatsappDrafts}
       telegramOpen={view.screen === "telegram"}
       telegramDrafts={telegramDrafts}
+      instagramOpen={view.screen === "instagram"}
+      instagramDrafts={instagramDrafts}
       accountOpen={view.screen === "account"}
       pendingApprovals={approvals.filter((approval) => approval.status === "pending").length}
       onOpenBusiness={() => onOpen("business")}
@@ -74,6 +80,7 @@ const Rail = ({
       onOpenServices={() => onOpen("services")}
       onOpenWhatsApp={() => onOpen("whatsapp")}
       onOpenTelegram={() => onOpen("telegram")}
+      onOpenInstagram={() => onOpen("instagram")}
       onOpenAccount={() => onOpen("account")}
     />
   )
@@ -97,6 +104,7 @@ const SectionScreen = ({
   if (view.screen === "services") return <ServicesScreen />
   if (view.screen === "whatsapp") return <WhatsAppScreen agents={agents} />
   if (view.screen === "telegram") return <TelegramScreen agents={agents} />
+  if (view.screen === "instagram") return <InstagramScreen agents={agents} />
   if (view.screen === "account") return <AccountScreen account={account} onSignOut={onSignOut} />
   return view.screen === "providers" ? <ProvidersScreen agents={agents} /> : null
 }

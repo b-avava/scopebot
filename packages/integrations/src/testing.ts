@@ -1,4 +1,11 @@
+import { createHmac } from "node:crypto"
 import { Effect, Layer, Redacted } from "effect"
+import {
+  type InstagramApp,
+  InstagramClient,
+  InstagramClientError,
+  InstagramSetup
+} from "./instagram/InstagramClient.ts"
 import {
   TelegramClient,
   TelegramClientError,
@@ -179,6 +186,99 @@ export const makeFakeTelegram = (validToken = "123456:abcdefghijklmnopqrstuvwxyz
         updateId,
         connection: { id: "biz-1", userId: "777", name: "Northwind Studio", username: "northwind", enabled }
       })),
+    revoke: () => {
+      revoked = true
+    }
+  }
+}
+
+/** A Meta app for tests, with a public address that is never called. */
+export const testInstagramApp: InstagramApp = {
+  appId: "1234",
+  appSecret: Redacted.make("app-secret"),
+  publicUrl: "https://crm.example.com",
+  verifyToken: Redacted.make("verify-me")
+}
+
+/**
+ * The Instagram API without a network, for tests. Webhook bodies come out
+ * signed with the test app's secret, as Meta signs them.
+ */
+export const makeFakeInstagram = (app: InstagramApp = testInstagramApp) => {
+  const sent: Array<{ readonly recipientId: string; readonly text: string; readonly byPerson: boolean }> = []
+  let reachable = true
+  let revoked = false
+  let nextMessage = 1
+
+  const check = (token: Redacted.Redacted<string>): Effect.Effect<void, InstagramClientError> =>
+    revoked || !Redacted.value(token).startsWith("ig-token")
+      ? Effect.fail(new InstagramClientError({ reason: "Invalid OAuth access token", code: 190 }))
+      : Effect.void
+
+  const layer = Layer.mergeAll(
+    Layer.succeed(InstagramSetup, InstagramSetup.of({ app })),
+    Layer.succeed(
+      InstagramClient,
+      InstagramClient.of({
+        exchangeCode: (_, code) =>
+          code === "good-code"
+            ? Effect.succeed({ token: Redacted.make("ig-token-1"), expiresAt: "2027-01-08T00:00:00.000Z" })
+            : Effect.fail(new InstagramClientError({ reason: "Invalid code", code: 100 })),
+        refresh: (token) =>
+          check(token).pipe(Effect.as({ token: Redacted.make("ig-token-2"), expiresAt: "2027-02-08T00:00:00.000Z" })),
+        me: (token) =>
+          check(token).pipe(
+            Effect.as({ accountId: "17841400000000001", username: "northwind.studio", name: "Northwind" })
+          ),
+        subscribe: check,
+        profile: (token, userId) =>
+          check(token).pipe(
+            Effect.as(
+              userId === "anna" ? { name: "Anna Kiknadze", username: "anna.kiknadze" } : { name: "", username: "" }
+            )
+          ),
+        sendText: (token, recipientId, text, byPerson) =>
+          check(token).pipe(
+            Effect.map(() => {
+              sent.push({ recipientId, text, byPerson })
+              return `out-${sent.length}`
+            })
+          ),
+        reachable: () => Effect.sync(() => reachable)
+      })
+    )
+  )
+
+  /** A webhook body and its signature, as Meta would send them. */
+  const webhook = (senderId: string, text: string, extra: Record<string, unknown> = {}) => {
+    const body = JSON.stringify({
+      object: "instagram",
+      entry: [
+        {
+          id: "17841400000000001",
+          time: Date.now(),
+          messaging: [
+            {
+              sender: { id: senderId },
+              recipient: { id: "17841400000000001" },
+              timestamp: Date.now(),
+              message: { mid: `mid-${nextMessage++}`, text, ...extra }
+            }
+          ]
+        }
+      ]
+    })
+    const signature = `sha256=${createHmac("sha256", Redacted.value(app.appSecret)).update(body).digest("hex")}`
+    return { body, signature }
+  }
+
+  return {
+    layer,
+    sent,
+    webhook,
+    setReachable: (value: boolean) => {
+      reachable = value
+    },
     revoke: () => {
       revoked = true
     }

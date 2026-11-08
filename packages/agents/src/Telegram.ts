@@ -79,6 +79,8 @@ export class Telegram extends Context.Service<
       text?: string
     ): Effect.Effect<ChatMessage, DraftNotFound | TelegramNotConnected | TelegramSendFailed>
     discardDraft(id: MessageId): Effect.Effect<ChatMessage, DraftNotFound>
+    /** Gives a chat a person took over back to the employee. */
+    resume(chatId: ConversationId): Effect.Effect<void, ConversationNotFound>
   }
 >()("@scope-bot/agents/Telegram") {
   static readonly layer = Layer.effect(
@@ -322,7 +324,7 @@ export class Telegram extends Context.Service<
         chats: inbox.chats.pipe(
           Effect.map((chats) =>
             chats.map(
-              ({ conversation, contact, lastMessage, drafts }): TelegramChat => ({
+              ({ conversation, contact, lastMessage, drafts, handoff }): TelegramChat => ({
                 id: conversation.id,
                 agentId: conversation.agentId,
                 contactId: contact?.id ?? null,
@@ -330,7 +332,8 @@ export class Telegram extends Context.Service<
                 username: contact?.channels.telegram ?? (conversation.title.startsWith("@") ? conversation.title : ""),
                 via: (conversation.address ?? "").startsWith("business:") ? "business" : "bot",
                 lastMessage,
-                drafts
+                drafts,
+                handoff
               })
             )
           )
@@ -345,7 +348,8 @@ export class Telegram extends Context.Service<
           yield* requireConnected
           return yield* inbox.sendDraft(id, text, sendText)
         }),
-        discardDraft: inbox.discardDraft
+        discardDraft: inbox.discardDraft,
+        resume: inbox.resume
       })
     })
   )

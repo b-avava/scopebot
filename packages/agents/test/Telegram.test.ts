@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest"
 import { CurrentBusiness, Store, TelegramStorage } from "@scope-bot/db"
-import { BusinessId } from "@scope-bot/domain"
+import { BusinessId, type ConversationId } from "@scope-bot/domain"
 import { makeFakeTelegram } from "@scope-bot/integrations/testing"
 import { Effect, Layer } from "effect"
 import { AgentChat } from "../src/AgentChat.ts"
@@ -17,7 +17,15 @@ const setup = () => {
     ChatModel.of({
       models: Effect.succeed({ defaultModel: "", models: [] }),
       reply: (request) =>
-        Effect.succeed({ text: "Hello from Nino", model: request.model, inputTokens: 1, outputTokens: 1 })
+        Effect.succeed({
+          // Asked about the company, the employee does not know and asks for a colleague.
+          text: request.turns.at(-1)?.text.includes("company")
+            ? "Let me ask a colleague. [[HANDOFF: No description of the company]]"
+            : "Hello from Nino",
+          model: request.model,
+          inputTokens: 1,
+          outputTokens: 1
+        })
     })
   )
   const layer = Telegram.layer.pipe(
@@ -174,6 +182,48 @@ describe("Telegram", () => {
         const stopped = yield* eventually(telegram.status, (status) => status.problem !== null)
         assert.include(stopped.problem ?? "", "token")
         assert.isFalse(stopped.online)
+      })
+    )
+  })
+
+  it.live("hands a chat over only when a person sends the draft that asks for it, and takes it back", () => {
+    const { telegram: fake, run } = setup()
+    return run(
+      Effect.gen(function* () {
+        const telegram = yield* Telegram
+        yield* connectBot(fake.validToken)
+        const draftsOf = (chatId: ConversationId) =>
+          telegram.messages(chatId).pipe(Effect.map((list) => list.filter((item) => item.delivery === "draft")))
+
+        fake.receive({ text: "What is your company?" })
+        const chat = present((yield* eventually(telegram.chats, (list) => list[0]?.drafts === 1))[0])
+        const asking = present((yield* draftsOf(chat.id))[0])
+        assert.strictEqual(asking.handoff, "No description of the company")
+        assert.isNull(chat.handoff, "Nobody takes over before the draft is sent")
+
+        // Throwing the draft away keeps the employee answering.
+        yield* telegram.discardDraft(asking.id)
+        fake.receive({ text: "?" })
+        const next = present((yield* eventually(draftsOf(chat.id), (list) => list.length === 1))[0])
+        assert.strictEqual(next.text, "Hello from Nino")
+        yield* telegram.discardDraft(next.id)
+
+        // Sending it tells the customer a colleague takes over, so a person does.
+        fake.receive({ text: "Tell me about the company" })
+        const again = present((yield* eventually(draftsOf(chat.id), (list) => list.length === 1))[0])
+        yield* telegram.sendDraft(again.id)
+        const handedOver = present((yield* telegram.chats)[0])
+        assert.strictEqual(handedOver.handoff, "No description of the company")
+        const before = (yield* telegram.messages(chat.id)).length
+        fake.receive({ text: "Hello?" })
+        yield* eventually(telegram.messages(chat.id), (list) => list.length === before + 1)
+        yield* Effect.sleep(100)
+        assert.lengthOf(yield* draftsOf(chat.id), 0, "The employee stays quiet while a person has the chat")
+
+        yield* telegram.resume(chat.id)
+        assert.isNull(present((yield* telegram.chats)[0]).handoff)
+        fake.receive({ text: "Anyone?" })
+        yield* eventually(draftsOf(chat.id), (list) => list.length === 1)
       })
     )
   })

@@ -369,6 +369,28 @@ const telegram = [
   )`
 ]
 
+/** A drafted reply can carry a handoff that happens only when a person sends it. */
+const draftHandoff = ["ALTER TABLE messages ADD COLUMN handoff text"]
+
+/** Instagram as a third channel. The access token is encrypted like API keys. */
+const instagram = [
+  "ALTER TABLE conversations DROP CONSTRAINT conversations_channel_check",
+  "ALTER TABLE conversations ADD CONSTRAINT conversations_channel_check CHECK (channel IN ('whatsapp', 'telegram', 'instagram'))",
+  `CREATE TABLE instagram_links (
+    business_id text PRIMARY KEY REFERENCES businesses (id) ON DELETE CASCADE,
+    agent_id text,
+    audience text NOT NULL CHECK (audience IN ('everyone', 'contacts')),
+    answers_alone boolean NOT NULL,
+    token_encrypted text,
+    token_expires_at timestamptz,
+    account_id text UNIQUE,
+    username text,
+    name text,
+    connected_at timestamptz,
+    FOREIGN KEY (business_id, agent_id) REFERENCES agents (business_id, id) ON DELETE SET NULL (agent_id)
+  )`
+]
+
 /** Runs what has not run yet. Add new migrations to the end, and never change one that has shipped. */
 export const migrate = Migrator.make({})({
   loader: Migrator.fromRecord({
@@ -376,6 +398,8 @@ export const migrate = Migrator.make({})({
     "0002_avatar_colour_only": run(avatarColourOnly),
     "0003_sign_and_role": run(signAndRole),
     "0004_whatsapp": run(whatsapp),
-    "0005_telegram": run(telegram)
+    "0005_telegram": run(telegram),
+    "0006_draft_handoff": run(draftHandoff),
+    "0007_instagram": run(instagram)
   })
 })

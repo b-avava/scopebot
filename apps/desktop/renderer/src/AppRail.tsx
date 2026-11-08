@@ -1,6 +1,6 @@
 import { Building2, ChartColumn, Check, CircleUser, Package, ScrollText, SquareKanban, Users } from "lucide-react"
 import type { ComponentType } from "react"
-import { TelegramLogo, WhatsAppLogo } from "./ChannelLogos.tsx"
+import { InstagramLogo, TelegramLogo, WhatsAppLogo } from "./ChannelLogos.tsx"
 
 interface RailButtonProps {
   readonly label: string
@@ -44,6 +44,8 @@ interface AppRailProps {
   readonly whatsappDrafts: number
   readonly telegramOpen: boolean
   readonly telegramDrafts: number
+  readonly instagramOpen: boolean
+  readonly instagramDrafts: number
   readonly accountOpen: boolean
   readonly pendingApprovals: number
   readonly onOpenBusiness: () => void
@@ -52,6 +54,7 @@ interface AppRailProps {
   readonly onOpenServices: () => void
   readonly onOpenWhatsApp: () => void
   readonly onOpenTelegram: () => void
+  readonly onOpenInstagram: () => void
   readonly onOpenAccount: () => void
 }
 
@@ -65,6 +68,8 @@ export const AppRail = ({
   whatsappDrafts,
   telegramOpen,
   telegramDrafts,
+  instagramOpen,
+  instagramDrafts,
   accountOpen,
   pendingApprovals,
   onOpenBusiness,
@@ -73,6 +78,7 @@ export const AppRail = ({
   onOpenServices,
   onOpenWhatsApp,
   onOpenTelegram,
+  onOpenInstagram,
   onOpenAccount
 }: AppRailProps) => (
   <nav aria-label="Sections" className="flex w-14 shrink-0 flex-col items-center gap-1 pt-1 pb-2">
@@ -93,6 +99,13 @@ export const AppRail = ({
       active={telegramOpen}
       onSelect={onOpenTelegram}
       badge={telegramDrafts}
+    />
+    <RailButton
+      label="Instagram"
+      icon={InstagramLogo}
+      active={instagramOpen}
+      onSelect={onOpenInstagram}
+      badge={instagramDrafts}
     />
     {hasTeam && <RailButton label="Approvals" icon={Check} badge={pendingApprovals} />}
     {hasTeam && <RailButton label="Activity log" icon={ScrollText} />}

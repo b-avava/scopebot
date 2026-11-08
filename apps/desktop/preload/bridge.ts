@@ -23,6 +23,8 @@ import type {
   DealDetails,
   Department,
   DepartmentDetails,
+  InstagramChat,
+  InstagramStatus,
   Invite,
   JoinTeam,
   LastMessage,
@@ -124,6 +126,7 @@ export const Channels = {
   sendWhatsApp: "whatsapp:send",
   sendWhatsAppDraft: "whatsapp:send-draft",
   discardWhatsAppDraft: "whatsapp:discard-draft",
+  resumeWhatsAppChat: "whatsapp:resume",
   getTelegram: "telegram:status",
   saveTelegramSettings: "telegram:settings",
   connectTelegram: "telegram:connect",
@@ -132,7 +135,19 @@ export const Channels = {
   listTelegramMessages: "telegram:messages",
   sendTelegram: "telegram:send",
   sendTelegramDraft: "telegram:send-draft",
-  discardTelegramDraft: "telegram:discard-draft"
+  discardTelegramDraft: "telegram:discard-draft",
+  resumeTelegramChat: "telegram:resume",
+  getInstagram: "instagram:status",
+  saveInstagramSettings: "instagram:settings",
+  startInstagramLogin: "instagram:login",
+  checkInstagram: "instagram:check",
+  disconnectInstagram: "instagram:disconnect",
+  listInstagramChats: "instagram:chats",
+  listInstagramMessages: "instagram:messages",
+  sendInstagram: "instagram:send",
+  sendInstagramDraft: "instagram:send-draft",
+  discardInstagramDraft: "instagram:discard-draft",
+  resumeInstagramChat: "instagram:resume"
 } as const
 
 export interface ServerStatus {
@@ -170,6 +185,11 @@ export type BridgeError =
   | "telegram-not-connected"
   | "telegram-needs-agent"
   | "telegram-send-failed"
+  | "instagram-not-configured"
+  | "instagram-not-connected"
+  | "instagram-needs-agent"
+  | "instagram-window-closed"
+  | "instagram-send-failed"
 
 /** IPC cannot carry typed errors, so failures travel as plain values. */
 export type BridgeResult<A> =
@@ -259,6 +279,8 @@ export interface ScopeBotBridge {
   /** Null sends the draft as the employee wrote it. */
   sendWhatsAppDraft(id: string, text: string | null): Promise<BridgeResult<ChatMessage>>
   discardWhatsAppDraft(id: string): Promise<BridgeResult<ChatMessage>>
+  /** Gives a chat a person took over back to the employee. */
+  resumeWhatsAppChat(chatId: string): Promise<BridgeResult<void>>
   getTelegram(): Promise<BridgeResult<TelegramStatus>>
   saveTelegramSettings(settings: ChannelSettings): Promise<BridgeResult<TelegramStatus>>
   connectTelegram(token: string): Promise<BridgeResult<TelegramStatus>>
@@ -269,4 +291,17 @@ export interface ScopeBotBridge {
   /** Null sends the draft as the employee wrote it. */
   sendTelegramDraft(id: string, text: string | null): Promise<BridgeResult<ChatMessage>>
   discardTelegramDraft(id: string): Promise<BridgeResult<ChatMessage>>
+  resumeTelegramChat(chatId: string): Promise<BridgeResult<void>>
+  getInstagram(): Promise<BridgeResult<InstagramStatus>>
+  saveInstagramSettings(settings: ChannelSettings): Promise<BridgeResult<InstagramStatus>>
+  /** Opens Instagram's sign in in the browser. The server finishes the connection. */
+  startInstagramLogin(): Promise<BridgeResult<void>>
+  checkInstagram(): Promise<BridgeResult<InstagramStatus>>
+  disconnectInstagram(): Promise<BridgeResult<InstagramStatus>>
+  listInstagramChats(): Promise<BridgeResult<ReadonlyArray<InstagramChat>>>
+  listInstagramMessages(chatId: string): Promise<BridgeResult<ReadonlyArray<ChatMessage>>>
+  sendInstagram(chatId: string, text: string): Promise<BridgeResult<ChatMessage>>
+  sendInstagramDraft(id: string, text: string | null): Promise<BridgeResult<ChatMessage>>
+  discardInstagramDraft(id: string): Promise<BridgeResult<ChatMessage>>
+  resumeInstagramChat(chatId: string): Promise<BridgeResult<void>>
 }

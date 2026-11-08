@@ -19,6 +19,7 @@ import {
   DealId,
   DepartmentDetails,
   DepartmentId,
+  type InstagramLogin,
   JoinTeam,
   LinkWhatsApp,
   Login,
@@ -87,7 +88,12 @@ const errorCodes: Record<string, BridgeError> = {
   TelegramTokenInvalid: "telegram-token-invalid",
   TelegramNotConnected: "telegram-not-connected",
   TelegramNeedsAgent: "telegram-needs-agent",
-  TelegramSendFailed: "telegram-send-failed"
+  TelegramSendFailed: "telegram-send-failed",
+  InstagramNotConfigured: "instagram-not-configured",
+  InstagramNotConnected: "instagram-not-connected",
+  InstagramNeedsAgent: "instagram-needs-agent",
+  InstagramWindowClosed: "instagram-window-closed",
+  InstagramSendFailed: "instagram-send-failed"
 }
 
 const toResult = <A, E extends { readonly _tag: string }>(
@@ -229,6 +235,20 @@ export class ServerConnection extends Context.Service<
     sendTelegram(chatId: unknown, text: unknown): Bridged<"sendTelegram">
     sendTelegramDraft(id: unknown, text: unknown): Bridged<"sendTelegramDraft">
     discardTelegramDraft(id: unknown): Bridged<"discardTelegramDraft">
+    resumeWhatsAppChat(chatId: unknown): Bridged<"resumeWhatsAppChat">
+    resumeTelegramChat(chatId: unknown): Bridged<"resumeTelegramChat">
+    readonly getInstagram: Bridged<"getInstagram">
+    saveInstagramSettings(settings: unknown): Bridged<"saveInstagramSettings">
+    /** The address to sign in at. Main opens it, so the renderer never handles it. */
+    readonly instagramLogin: Effect.Effect<BridgeResult<InstagramLogin>>
+    readonly checkInstagram: Bridged<"checkInstagram">
+    readonly disconnectInstagram: Bridged<"disconnectInstagram">
+    readonly listInstagramChats: Bridged<"listInstagramChats">
+    listInstagramMessages(chatId: unknown): Bridged<"listInstagramMessages">
+    sendInstagram(chatId: unknown, text: unknown): Bridged<"sendInstagram">
+    sendInstagramDraft(id: unknown, text: unknown): Bridged<"sendInstagramDraft">
+    discardInstagramDraft(id: unknown): Bridged<"discardInstagramDraft">
+    resumeInstagramChat(chatId: unknown): Bridged<"resumeInstagramChat">
   }
 >()("@scope-bot/desktop/main/ServerConnection") {
   static readonly layerNoDeps = Layer.effect(
@@ -580,7 +600,60 @@ export class ServerConnection extends Context.Service<
             })
           ),
         discardTelegramDraft: (id) =>
-          toResult(decodeMessageId(id).pipe(Effect.flatMap((id) => client.telegram.discardDraft({ params: { id } }))))
+          toResult(decodeMessageId(id).pipe(Effect.flatMap((id) => client.telegram.discardDraft({ params: { id } })))),
+        resumeWhatsAppChat: (chatId) =>
+          toResult(
+            decodeConversation(chatId).pipe(
+              Effect.flatMap((id) => client.whatsapp.resume({ params: { id } })),
+              Effect.asVoid
+            )
+          ),
+        getInstagram: toResult(client.instagram.status()),
+        saveInstagramSettings: (settings) =>
+          toResult(
+            decodeChannelSettings(settings).pipe(
+              Effect.flatMap((payload) => client.instagram.saveSettings({ payload }))
+            )
+          ),
+        instagramLogin: toResult(client.instagram.login()),
+        checkInstagram: toResult(client.instagram.checkReachable()),
+        disconnectInstagram: toResult(client.instagram.disconnect()),
+        listInstagramChats: toResult(client.instagram.chats()),
+        listInstagramMessages: (chatId) =>
+          toResult(
+            decodeConversation(chatId).pipe(Effect.flatMap((id) => client.instagram.messages({ params: { id } })))
+          ),
+        sendInstagram: (chatId, text) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeConversation(chatId) }
+              return yield* client.instagram.send({ params, payload: yield* decodeWhatsAppText({ text }) })
+            })
+          ),
+        sendInstagramDraft: (id, text) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeMessageId(id) }
+              const payload = yield* decodeDraft(text === null || text === undefined ? {} : { text })
+              return yield* client.instagram.sendDraft({ params, payload })
+            })
+          ),
+        discardInstagramDraft: (id) =>
+          toResult(decodeMessageId(id).pipe(Effect.flatMap((id) => client.instagram.discardDraft({ params: { id } })))),
+        resumeInstagramChat: (chatId) =>
+          toResult(
+            decodeConversation(chatId).pipe(
+              Effect.flatMap((id) => client.instagram.resume({ params: { id } })),
+              Effect.asVoid
+            )
+          ),
+        resumeTelegramChat: (chatId) =>
+          toResult(
+            decodeConversation(chatId).pipe(
+              Effect.flatMap((id) => client.telegram.resume({ params: { id } })),
+              Effect.asVoid
+            )
+          )
       })
     })
   )

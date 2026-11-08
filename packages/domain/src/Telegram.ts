@@ -53,7 +53,9 @@ export const TelegramChat = Schema.Struct({
   /** To the bot, or in the business account's own chats. */
   via: Schema.Literals(["bot", "business"]),
   lastMessage: Schema.NullOr(ChatMessage),
-  drafts: Schema.Int
+  drafts: Schema.Int,
+  /** Why a person has the chat now. The employee stays quiet until it is given back. */
+  handoff: Schema.NullOr(Schema.String)
 })
 export type TelegramChat = typeof TelegramChat.Type
 

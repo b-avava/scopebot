@@ -12,7 +12,7 @@ export type ConversationId = typeof ConversationId.Type
 export const NEW_CHAT_TITLE = "New chat"
 
 /** Where customers write from, other than the app itself. */
-export const Channel = Schema.Literals(["whatsapp", "telegram"])
+export const Channel = Schema.Literals(["whatsapp", "telegram", "instagram"])
 export type Channel = typeof Channel.Type
 
 /**
@@ -86,7 +86,13 @@ export const ChatMessage = Schema.Struct({
   /** Only on channel chats: whether a reply reached the customer. A draft waits for a person. */
   delivery: Schema.optionalKey(MessageDelivery),
   /** The id the channel gave the message, so the same one is never stored twice. */
-  externalId: Schema.optionalKey(Schema.String)
+  externalId: Schema.optionalKey(Schema.String),
+  /**
+   * On a draft: why the employee wants a person to take the chat over. It
+   * happens only when the draft is sent, since only then does the customer
+   * hear that a colleague will answer.
+   */
+  handoff: Schema.optionalKey(Schema.String)
 })
 export type ChatMessage = typeof ChatMessage.Type
 

@@ -15,6 +15,7 @@ Customers in the region write on Telegram as much as on WhatsApp. Telegram has a
 - **One inbox for every channel.** `ChannelInbox` in `packages/agents` turns senders into contacts and chats, lets the employee draft or answer, and sends what people approve. WhatsApp and Telegram only bring their own way of sending text and their own connection, so a third channel adds little.
 - **A Telegram contact is found by its @username.** A new sender becomes a contact with that username, or by name alone when they have none.
 - **The settings are the same on every channel:** who answers, whom, and whether the employee answers alone. They share one schema, `ChannelSettings`.
+- **A drafted reply carries its handoff.** When the employee asks for a person in a draft, the chat goes to a person only once someone sends that draft, since only then does the customer hear that a colleague takes over. Throwing the draft away keeps the employee answering. A chat a person has shows why, with a button that gives it back. This holds for WhatsApp too.
 - **No new dependency.** The Bot API is plain HTTPS and JSON, called with `fetch`.
 
 ## Consequences

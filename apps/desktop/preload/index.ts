@@ -77,6 +77,7 @@ const bridge: ScopeBotBridge = {
   sendWhatsApp: (chatId, text) => ipcRenderer.invoke(Channels.sendWhatsApp, chatId, text),
   sendWhatsAppDraft: (id, text) => ipcRenderer.invoke(Channels.sendWhatsAppDraft, id, text),
   discardWhatsAppDraft: (id) => ipcRenderer.invoke(Channels.discardWhatsAppDraft, id),
+  resumeWhatsAppChat: (chatId) => ipcRenderer.invoke(Channels.resumeWhatsAppChat, chatId),
   getTelegram: () => ipcRenderer.invoke(Channels.getTelegram),
   saveTelegramSettings: (settings) => ipcRenderer.invoke(Channels.saveTelegramSettings, settings),
   connectTelegram: (token) => ipcRenderer.invoke(Channels.connectTelegram, token),
@@ -85,7 +86,19 @@ const bridge: ScopeBotBridge = {
   listTelegramMessages: (chatId) => ipcRenderer.invoke(Channels.listTelegramMessages, chatId),
   sendTelegram: (chatId, text) => ipcRenderer.invoke(Channels.sendTelegram, chatId, text),
   sendTelegramDraft: (id, text) => ipcRenderer.invoke(Channels.sendTelegramDraft, id, text),
-  discardTelegramDraft: (id) => ipcRenderer.invoke(Channels.discardTelegramDraft, id)
+  discardTelegramDraft: (id) => ipcRenderer.invoke(Channels.discardTelegramDraft, id),
+  resumeTelegramChat: (chatId) => ipcRenderer.invoke(Channels.resumeTelegramChat, chatId),
+  getInstagram: () => ipcRenderer.invoke(Channels.getInstagram),
+  saveInstagramSettings: (settings) => ipcRenderer.invoke(Channels.saveInstagramSettings, settings),
+  startInstagramLogin: () => ipcRenderer.invoke(Channels.startInstagramLogin),
+  checkInstagram: () => ipcRenderer.invoke(Channels.checkInstagram),
+  disconnectInstagram: () => ipcRenderer.invoke(Channels.disconnectInstagram),
+  listInstagramChats: () => ipcRenderer.invoke(Channels.listInstagramChats),
+  listInstagramMessages: (chatId) => ipcRenderer.invoke(Channels.listInstagramMessages, chatId),
+  sendInstagram: (chatId, text) => ipcRenderer.invoke(Channels.sendInstagram, chatId, text),
+  sendInstagramDraft: (id, text) => ipcRenderer.invoke(Channels.sendInstagramDraft, id, text),
+  discardInstagramDraft: (id) => ipcRenderer.invoke(Channels.discardInstagramDraft, id),
+  resumeInstagramChat: (chatId) => ipcRenderer.invoke(Channels.resumeInstagramChat, chatId)
 }
 
 contextBridge.exposeInMainWorld("scopeBot", bridge)

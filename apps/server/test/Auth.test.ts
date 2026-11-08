@@ -9,13 +9,14 @@ import {
   Contacts,
   Deals,
   Departments,
+  Instagram,
   ModelProviders,
   Services,
   Telegram,
   WhatsApp
 } from "@scope-bot/agents"
 import { Api } from "@scope-bot/contracts"
-import { Accounts, pgStoreLayer, TelegramStorage, WhatsAppStorage } from "@scope-bot/db"
+import { Accounts, InstagramStorage, pgStoreLayer, TelegramStorage, WhatsAppStorage } from "@scope-bot/db"
 import { testDatabaseLayer } from "@scope-bot/db/testing"
 import {
   type AuthSession,
@@ -24,13 +25,14 @@ import {
   ModelNotConfigured,
   UserId
 } from "@scope-bot/domain"
-import { makeFakeTelegram, makeFakeWhatsApp } from "@scope-bot/integrations/testing"
+import { makeFakeInstagram, makeFakeTelegram, makeFakeWhatsApp } from "@scope-bot/integrations/testing"
 import { Effect, Layer } from "effect"
 import { HttpClient, HttpClientRequest, HttpRouter } from "effect/http"
 import { HttpApiClient } from "effect/http-api"
 import { SqlClient } from "effect/sql"
 import { Auth } from "../src/Auth.ts"
 import { ApiRoutes } from "../src/Http.ts"
+import { InstagramRoutes } from "../src/InstagramRoutes.ts"
 import { AuthorizationLayer } from "../src/Security.ts"
 
 const model = Layer.succeed(
@@ -41,7 +43,9 @@ const model = Layer.succeed(
   })
 )
 
-const domain = Layer.mergeAll(WhatsApp.layer, Telegram.layer).pipe(
+const instagramPhone = makeFakeInstagram()
+
+const domain = Layer.mergeAll(WhatsApp.layer, Telegram.layer, Instagram.layer).pipe(
   Layer.provideMerge(AgentChat.layer),
   Layer.provideMerge(Agents.layer),
   Layer.provideMerge(Contacts.layer),
@@ -56,13 +60,18 @@ const domain = Layer.mergeAll(WhatsApp.layer, Telegram.layer).pipe(
   Layer.provide(WhatsAppStorage.layerMemory),
   Layer.provide(makeFakeWhatsApp().layer),
   Layer.provide(TelegramStorage.layerMemory),
-  Layer.provide(makeFakeTelegram().layer)
+  Layer.provide(makeFakeTelegram().layer),
+  Layer.provide(InstagramStorage.layerMemory),
+  Layer.provide(instagramPhone.layer)
 )
 
 const security = AuthorizationLayer.pipe(Layer.provideMerge(Auth.layer), Layer.provideMerge(Accounts.layer))
 
 /** The real API on real PostgreSQL. Only the model is replaced. */
-const server = HttpRouter.serve(ApiRoutes, { disableListenLog: true, disableLogger: true }).pipe(
+const server = HttpRouter.serve(Layer.mergeAll(ApiRoutes, InstagramRoutes), {
+  disableListenLog: true,
+  disableLogger: true
+}).pipe(
   Layer.provideMerge(NodeHttpServer.layerTest),
   Layer.provideMerge(security),
   Layer.provideMerge(domain),
@@ -326,10 +335,11 @@ layer(server, { timeout: "120 seconds", excludeTestServices: true })("Auth", (it
       const linked = yield* Effect.flip(member.whatsapp.link({ payload: {} }))
       const unlinked = yield* Effect.flip(member.whatsapp.unlink())
       const bot = yield* Effect.flip(member.telegram.connect({ payload: { token: makeFakeTelegram().validToken } }))
+      const instagramLogin = yield* Effect.flip(member.instagram.login())
 
       assert.deepStrictEqual(
-        [invited._tag, saved._tag, key._tag, removed._tag, linked._tag, unlinked._tag, bot._tag],
-        ["Forbidden", "Forbidden", "Forbidden", "Forbidden", "Forbidden", "Forbidden", "Forbidden"]
+        [invited._tag, saved._tag, key._tag, removed._tag, linked._tag, unlinked._tag, bot._tag, instagramLogin._tag],
+        ["Forbidden", "Forbidden", "Forbidden", "Forbidden", "Forbidden", "Forbidden", "Forbidden", "Forbidden"]
       )
       // Members still see the chats and can answer them.
       assert.strictEqual((yield* member.whatsapp.status()).state, "unlinked")
@@ -375,6 +385,35 @@ layer(server, { timeout: "120 seconds", excludeTestServices: true })("Auth", (it
         (yield* Effect.flip(owner.team.remove({ params: { id: UserId.make("missing") } })))._tag,
         "UserNotFound"
       )
+    })
+  )
+
+  it.effect("answers Meta's webhook check and refuses unsigned webhooks, without a session", () =>
+    Effect.gen(function* () {
+      const http = yield* HttpClient.HttpClient
+      const verified = yield* http.get(
+        "/instagram/webhook?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=42"
+      )
+      assert.strictEqual(verified.status, 200)
+      assert.strictEqual(yield* verified.text, "42")
+      const wrong = yield* http.get("/instagram/webhook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=42")
+      assert.strictEqual(wrong.status, 403)
+
+      const { body, signature } = instagramPhone.webhook("anna", "Hi")
+      const forged = yield* http.execute(
+        HttpClientRequest.post("/instagram/webhook").pipe(HttpClientRequest.bodyText(body))
+      )
+      assert.strictEqual(forged.status, 403)
+      const signed = yield* http.execute(
+        HttpClientRequest.post("/instagram/webhook").pipe(
+          HttpClientRequest.bodyText(body),
+          HttpClientRequest.setHeader("x-hub-signature-256", signature)
+        )
+      )
+      assert.strictEqual(signed.status, 200)
+
+      const login = yield* http.get("/instagram/oauth/callback?code=good-code&state=made-up")
+      assert.include(yield* login.text, "did not connect")
     })
   )
 })

@@ -1,6 +1,7 @@
 export * from "./Accounts.ts"
 export * from "./CurrentBusiness.ts"
 export * from "./Database.ts"
+export * from "./InstagramStorage.ts"
 export * from "./LegacyFile.ts"
 export * from "./PgStore.ts"
 export * from "./ProviderKeys.ts"

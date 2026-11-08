@@ -54,6 +54,10 @@ export interface ChannelChat {
   readonly lastMessage: ChatMessage | null
   /** Replies that wait for a person. */
   readonly drafts: number
+  /** Why a person has the chat now, or null while the employee answers. */
+  readonly handoff: string | null
+  /** When the customer last wrote, which some channels count the time to answer from. */
+  readonly lastCustomerAt: string | null
 }
 
 export const emptyData: Data = {
@@ -319,7 +323,12 @@ const make = (initial: Data) =>
               return {
                 conversation,
                 lastMessage: said.findLast((message) => message.role !== "note") ?? null,
-                drafts: said.filter((message) => message.delivery === "draft").length
+                drafts: said.filter((message) => message.delivery === "draft").length,
+                lastCustomerAt: said.findLast((message) => message.role === "customer")?.createdAt ?? null,
+                handoff:
+                  data.escalations.findLast(
+                    (escalation) => escalation.conversationId === conversation.id && escalation.resolvedAt === null
+                  )?.reason ?? null
               }
             })
             .sort((a, b) =>

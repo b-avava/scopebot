@@ -6,6 +6,7 @@ import {
   Contacts,
   Deals,
   Departments,
+  Instagram,
   ModelProviders,
   Services,
   Telegram,
@@ -300,7 +301,8 @@ export const WhatsAppApiHandlers = HttpApiBuilder.group(
       messages: ({ params }) => whatsapp.messages(params.id),
       send: ({ params, payload }) => whatsapp.send(params.id, payload.text),
       sendDraft: ({ params, payload }) => whatsapp.sendDraft(params.id, payload.text),
-      discardDraft: ({ params }) => whatsapp.discardDraft(params.id)
+      discardDraft: ({ params }) => whatsapp.discardDraft(params.id),
+      resume: ({ params }) => whatsapp.resume(params.id)
     })
   })
 )
@@ -320,7 +322,30 @@ export const TelegramApiHandlers = HttpApiBuilder.group(
       messages: ({ params }) => telegram.messages(params.id),
       send: ({ params, payload }) => telegram.send(params.id, payload.text),
       sendDraft: ({ params, payload }) => telegram.sendDraft(params.id, payload.text),
-      discardDraft: ({ params }) => telegram.discardDraft(params.id)
+      discardDraft: ({ params }) => telegram.discardDraft(params.id),
+      resume: ({ params }) => telegram.resume(params.id)
+    })
+  })
+)
+
+export const InstagramApiHandlers = HttpApiBuilder.group(
+  Api,
+  "instagram",
+  Effect.fn(function* (handlers) {
+    const instagram = yield* Instagram
+
+    return handlers.handleAll({
+      status: () => instagram.status,
+      saveSettings: ({ payload }) => requireManager.pipe(Effect.andThen(instagram.saveSettings(payload))),
+      login: () => requireManager.pipe(Effect.andThen(instagram.login)),
+      checkReachable: () => instagram.checkReachable,
+      disconnect: () => requireManager.pipe(Effect.andThen(instagram.disconnect)),
+      chats: () => instagram.chats,
+      messages: ({ params }) => instagram.messages(params.id),
+      send: ({ params, payload }) => instagram.send(params.id, payload.text),
+      sendDraft: ({ params, payload }) => instagram.sendDraft(params.id, payload.text),
+      discardDraft: ({ params }) => instagram.discardDraft(params.id),
+      resume: ({ params }) => instagram.resume(params.id)
     })
   })
 )
@@ -345,7 +370,8 @@ export const ApiHandlers = Layer.mergeAll(
   ModelsApiHandlers,
   ProvidersApiHandlers,
   WhatsAppApiHandlers,
-  TelegramApiHandlers
+  TelegramApiHandlers,
+  InstagramApiHandlers
 )
 
 export const ApiRoutes = HttpApiBuilder.layer(Api, {

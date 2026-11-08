@@ -88,10 +88,10 @@ const toConversation = ({ businessId: _business, seq: _seq, channel, address, co
   createdAt: iso(row.createdAt)
 })
 
-const toMessage = ({ businessId: _business, seq: _seq, images, delivery, externalId, ...row }: Row) => ({
+const toMessage = ({ businessId: _business, seq: _seq, images, delivery, externalId, handoff, ...row }: Row) => ({
   ...row,
   ...(images === null || images === undefined ? {} : { images }),
-  ...present({ delivery: delivery ?? null, externalId: externalId ?? null }),
+  ...present({ delivery: delivery ?? null, externalId: externalId ?? null, handoff: handoff ?? null }),
   createdAt: iso(row.createdAt)
 })
 
@@ -127,7 +127,13 @@ const readEscalations = reader(Escalation, toEscalation)
 const readLastMessages = reader(LastMessage, (row) => ({ ...row, createdAt: iso(row.createdAt) }))
 
 const decodeChannelChat = Schema.decodeUnknownEffect(
-  Schema.Struct({ conversation: Conversation, lastMessage: Schema.NullOr(ChatMessage), drafts: Schema.Int })
+  Schema.Struct({
+    conversation: Conversation,
+    lastMessage: Schema.NullOr(ChatMessage),
+    drafts: Schema.Int,
+    handoff: Schema.NullOr(Schema.String),
+    lastCustomerAt: Schema.NullOr(Schema.String)
+  })
 )
 
 /** A row turned into JSON inside a query keeps its column names and its own date format. */
@@ -142,14 +148,16 @@ const fromJsonRow = (value: Record<string, unknown>): Row => {
 }
 
 const readChannelChats = (rows: ReadonlyArray<Row>) =>
-  Effect.forEach(rows, ({ lastMessage, drafts, ...row }) =>
+  Effect.forEach(rows, ({ lastMessage, drafts, handoff, lastCustomerAt, ...row }) =>
     decodeChannelChat({
       conversation: toConversation(row),
       lastMessage:
         lastMessage === null || lastMessage === undefined
           ? null
           : toMessage(fromJsonRow(lastMessage as Record<string, unknown>)),
-      drafts
+      drafts,
+      handoff: handoff ?? null,
+      lastCustomerAt: lastCustomerAt instanceof Date ? lastCustomerAt.toISOString() : null
     })
   ).pipe(
     Effect.map(
@@ -221,12 +229,13 @@ const serviceRow = (business: BusinessId, { sellerIds: _sellers, ...service }: S
 
 const dealRow = (business: BusinessId, { serviceIds: _services, ...deal }: Deal) => ({ ...deal, businessId: business })
 
-const messageRow = (business: BusinessId, { images, delivery, externalId, ...message }: ChatMessage) => ({
+const messageRow = (business: BusinessId, { images, delivery, externalId, handoff, ...message }: ChatMessage) => ({
   ...message,
   businessId: business,
   images: images === undefined ? null : json(images),
   delivery: delivery ?? null,
-  externalId: externalId ?? null
+  externalId: externalId ?? null,
+  handoff: handoff ?? null
 })
 
 const conversationRow = (business: BusinessId, { channel, address, contactId, ...conversation }: Conversation) => ({
@@ -419,7 +428,12 @@ const makeStore = Effect.gen(function* () {
               WHERE m.business_id = c.business_id AND m.conversation_id = c.id AND m.role <> 'note'
               ORDER BY m.seq DESC LIMIT 1) AS last_message,
             (SELECT count(*) FROM messages m
-              WHERE m.business_id = c.business_id AND m.conversation_id = c.id AND m.delivery = 'draft')::int AS drafts
+              WHERE m.business_id = c.business_id AND m.conversation_id = c.id AND m.delivery = 'draft')::int AS drafts,
+            (SELECT e.reason FROM escalations e
+              WHERE e.business_id = c.business_id AND e.conversation_id = c.id AND e.resolved_at IS NULL
+              ORDER BY e.seq DESC LIMIT 1) AS handoff,
+            (SELECT max(m.created_at) FROM messages m
+              WHERE m.business_id = c.business_id AND m.conversation_id = c.id AND m.role = 'customer') AS last_customer_at
           FROM conversations c WHERE c.business_id = ${business} AND c.channel = ${channel}`
       ).pipe(Effect.flatMap(readChannelChats)),
     findChannelConversation: (channel, address) =>

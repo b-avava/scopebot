@@ -16,7 +16,8 @@ const api: ChannelChatApi = {
   listMessages: (chatId) => window.scopeBot.listTelegramMessages(chatId),
   send: (chatId, text) => window.scopeBot.sendTelegram(chatId, text),
   sendDraft: (id, text) => window.scopeBot.sendTelegramDraft(id, text),
-  discardDraft: (id) => window.scopeBot.discardTelegramDraft(id)
+  discardDraft: (id) => window.scopeBot.discardTelegramDraft(id),
+  resume: (chatId) => window.scopeBot.resumeTelegramChat(chatId)
 }
 
 const Title = ({

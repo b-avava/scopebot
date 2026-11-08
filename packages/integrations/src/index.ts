@@ -1,3 +1,4 @@
+export * from "./instagram/InstagramClient.ts"
 export * from "./telegram/TelegramClient.ts"
 export * from "./whatsapp/BaileysClient.ts"
 export * from "./whatsapp/qr.ts"

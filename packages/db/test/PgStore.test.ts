@@ -31,6 +31,7 @@ import { Effect, Exit, Layer, Option, Redacted } from "effect"
 import { SqlClient } from "effect/sql"
 import { Accounts } from "../src/Accounts.ts"
 import { CurrentBusiness } from "../src/CurrentBusiness.ts"
+import { InstagramStorage } from "../src/InstagramStorage.ts"
 import { migrate } from "../src/Migrations.ts"
 import { pgStoreLayer } from "../src/PgStore.ts"
 import { ProviderKeys } from "../src/ProviderKeys.ts"
@@ -45,7 +46,8 @@ const services = Layer.mergeAll(
   Accounts.layer,
   ProviderKeys.layerPostgres(secret),
   WhatsAppStorage.layerPostgres(secret),
-  TelegramStorage.layerPostgres(secret)
+  TelegramStorage.layerPostgres(secret),
+  InstagramStorage.layerPostgres(secret)
 ).pipe(Layer.provideMerge(testDatabaseLayer))
 
 const at = "2026-11-07T10:00:00.123Z"
@@ -720,6 +722,37 @@ layer(services, { timeout: "60 seconds" })("PgStore", (it) => {
 
       yield* inBusiness(first)(storage.saveLink({ ...link, token: null }))
       assert.notInclude(yield* storage.connectedBusinesses, first)
+    })
+  )
+
+  it.effect("keeps the Instagram account per business, finds it by its id, and encrypts the token", () =>
+    Effect.gen(function* () {
+      const storage = yield* InstagramStorage
+      const store = yield* Store
+      const sql = yield* SqlClient.SqlClient
+      const business = yield* newBusiness
+      const link = {
+        settings: { agentId: AgentId.make("nino"), audience: "contacts" as const, answersAlone: false },
+        token: Redacted.make("ig-very-secret-token"),
+        tokenExpiresAt: at,
+        accountId: `acct-${crypto.randomUUID()}`,
+        account: { username: "northwind.studio", name: "Northwind" },
+        connectedAt: at
+      }
+
+      yield* inBusiness(business)(store.saveAgent(agent("nino")))
+      yield* inBusiness(business)(storage.saveLink(link))
+      const stored = yield* sql<{ readonly tokenEncrypted: string }>`SELECT token_encrypted FROM instagram_links
+        WHERE business_id = ${business}`
+      assert.notInclude(stored[0]?.tokenEncrypted ?? "", "very-secret")
+
+      const read = yield* inBusiness(business)(storage.link)
+      assert.deepStrictEqual({ ...read, token: null }, { ...link, token: null })
+      assert.strictEqual(Redacted.value(read.token ?? Redacted.make("")), "ig-very-secret-token")
+      assert.strictEqual(Option.getOrNull(yield* storage.businessForAccount(link.accountId)), business)
+
+      yield* inBusiness(business)(storage.saveLink({ ...link, token: null }))
+      assert.isTrue(Option.isNone(yield* storage.businessForAccount(link.accountId)))
     })
   )
 })
