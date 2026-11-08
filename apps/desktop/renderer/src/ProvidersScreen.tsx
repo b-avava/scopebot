@@ -23,7 +23,7 @@ const keyNames: Partial<Record<ProviderId, string>> = {
 }
 
 const Card = ({ children }: { readonly children: ReactNode }) => (
-  <div className="flex flex-col divide-y rounded-xl border">{children}</div>
+  <div className="flex flex-col divide-y rounded-card border">{children}</div>
 )
 
 const Row = ({
@@ -68,7 +68,7 @@ const Section = ({
 )
 
 const fieldClasses =
-  "h-9 w-full rounded-lg border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+  "h-9 w-full rounded-control-sm border bg-field px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
 
 const SearchField = ({
   label,
@@ -383,7 +383,7 @@ const ProviderList = ({
         key={provider.id}
         type="button"
         onClick={() => onOpen(provider.id)}
-        className="flex min-h-16 items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors duration-150 first:rounded-t-xl last:rounded-b-xl hover:bg-muted focus-visible:bg-muted"
+        className="flex min-h-16 items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors duration-150 first:rounded-t-card last:rounded-b-card hover:bg-muted focus-visible:bg-muted"
       >
         <span className="shrink-0">
           <ProviderIcon provider={provider.id} size={20} />
@@ -410,7 +410,7 @@ const DefaultProvider = ({ connected }: { readonly connected: ReadonlyArray<Prov
             aria-label="Default provider"
             value={value}
             onChange={(event) => savePreferences({ ...preferences, defaultProvider: event.target.value as ProviderId })}
-            className="h-9 appearance-none rounded-lg border bg-background pl-3 pr-8 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-9 appearance-none rounded-control-sm border bg-field pl-3 pr-8 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {connected.map((provider) => (
               <option key={provider.id} value={provider.id}>

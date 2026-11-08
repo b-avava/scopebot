@@ -1,5 +1,6 @@
-import { ProviderKeys } from "@scope-bot/db"
+import { CurrentBusiness, ProviderKeys } from "@scope-bot/db"
 import {
+  type BusinessId,
   type ModelFailed,
   ModelNotConfigured,
   type ModelRefused,
@@ -8,7 +9,7 @@ import {
   type ProviderKey,
   ProviderLoginFailed
 } from "@scope-bot/domain"
-import { Context, Effect, Layer, Option } from "effect"
+import { Cache, Context, Effect, Layer, Option } from "effect"
 import { HttpClient } from "effect/http"
 import { ChatModel, type ChatReply, type ChatRequest } from "./ChatModel.ts"
 import { makeClaudeCodeProvider } from "./ClaudeCodeProvider.ts"
@@ -17,6 +18,7 @@ import { LocalCli } from "./LocalCli.ts"
 import { openAiCompatibleModel } from "./OpenAiCompatibleChatModel.ts"
 
 const CATALOG_TTL = "30 seconds"
+const MAX_CACHED_BUSINESSES = 1000
 
 export interface ChatProvider {
   /** Never fails: a provider that cannot be used says so in its status. */
@@ -138,16 +140,19 @@ const makeKeyProvider = (
 
 const make = (providers: Partial<Record<ProviderId, ChatProvider>>, keys: ProviderKeys["Service"]) =>
   Effect.gen(function* () {
-    const [list, invalidate] = yield* Effect.cachedInvalidateWithTTL(
-      Effect.all(
-        Object.values(providers).map((provider) => provider.catalog),
-        { concurrency: "unbounded" }
-      ),
-      CATALOG_TTL
-    )
+    const catalogs = yield* Cache.make({
+      capacity: MAX_CACHED_BUSINESSES,
+      timeToLive: CATALOG_TTL,
+      lookup: (business: BusinessId | null) =>
+        Effect.all(
+          Object.values(providers).map((provider) => provider.catalog),
+          { concurrency: "unbounded" }
+        ).pipe(Effect.provideService(CurrentBusiness, business))
+    })
+    const invalidate = CurrentBusiness.pipe(Effect.flatMap((business) => Cache.invalidate(catalogs, business)))
 
     return ModelProviders.of({
-      list,
+      list: CurrentBusiness.pipe(Effect.flatMap((business) => Cache.get(catalogs, business))),
       reply: (provider, request) => providers[provider]?.reply(request) ?? Effect.fail(new ModelNotConfigured()),
       saveKey: (provider, input) => keys.save(provider, input).pipe(Effect.andThen(invalidate)),
       removeKey: (provider) => keys.remove(provider).pipe(Effect.andThen(invalidate)),

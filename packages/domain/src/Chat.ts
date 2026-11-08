@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { AgentId } from "./Agent.ts"
+import { ContactId } from "./Contact.ts"
 
 export const MessageId = Schema.String.pipe(Schema.brand("MessageId"))
 export type MessageId = typeof MessageId.Type
@@ -10,12 +11,24 @@ export type ConversationId = typeof ConversationId.Type
 /** The title of a chat until its first message names it. */
 export const NEW_CHAT_TITLE = "New chat"
 
-/** One tab of an employee. Tabs separate tasks and share the employee's memory. */
+/** Where customers write from, other than the app itself. */
+export const Channel = Schema.Literals(["whatsapp", "telegram"])
+export type Channel = typeof Channel.Type
+
+/**
+ * One tab of an employee, or a chat with a customer on a channel. Tabs separate
+ * tasks and share the employee's memory. A channel chat shares nothing, because
+ * it belongs to one customer.
+ */
 export const Conversation = Schema.Struct({
   id: ConversationId,
   agentId: AgentId,
   title: Schema.NonEmptyString,
-  createdAt: Schema.String
+  createdAt: Schema.String,
+  channel: Schema.optionalKey(Channel),
+  /** Who to answer on the channel, such as a WhatsApp chat id. */
+  address: Schema.optionalKey(Schema.String),
+  contactId: Schema.optionalKey(ContactId)
 })
 export type Conversation = typeof Conversation.Type
 
@@ -55,15 +68,25 @@ export type ChatImage = typeof ChatImage.Type
 
 const MessageImages = Schema.Array(ChatImage).check(Schema.isMaxLength(MAX_MESSAGE_IMAGES))
 
+export const MessageDelivery = Schema.Literals(["draft", "sending", "sent", "failed", "discarded"])
+export type MessageDelivery = typeof MessageDelivery.Type
+
 export const ChatMessage = Schema.Struct({
   id: MessageId,
   agentId: AgentId,
   conversationId: ConversationId,
-  /** A note is for the people supervising the chat. Models and customers never see it. */
-  role: Schema.Literals(["customer", "agent", "note"]),
+  /**
+   * A note is for the people supervising the chat. Models and customers never see it.
+   * A person is someone from the team writing to the customer themselves.
+   */
+  role: Schema.Literals(["customer", "agent", "note", "person"]),
   text: Schema.String,
   images: Schema.optionalKey(MessageImages),
-  createdAt: Schema.String
+  createdAt: Schema.String,
+  /** Only on channel chats: whether a reply reached the customer. A draft waits for a person. */
+  delivery: Schema.optionalKey(MessageDelivery),
+  /** The id the channel gave the message, so the same one is never stored twice. */
+  externalId: Schema.optionalKey(Schema.String)
 })
 export type ChatMessage = typeof ChatMessage.Type
 

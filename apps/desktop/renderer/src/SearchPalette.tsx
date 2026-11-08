@@ -2,7 +2,7 @@ import type { Agent, SearchHit } from "@scope-bot/domain"
 import { CornerDownLeft, Search } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
 import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from "react"
-import { Mascot } from "./Mascot.tsx"
+import { EmployeeAvatar } from "./Avatar.tsx"
 
 const SEARCH_DELAY_MS = 120
 
@@ -76,7 +76,7 @@ const ResultGroup = ({ label, hits, visible, active, team, activeRow, onHover, o
           >
             {agent !== undefined && (
               <span className="shrink-0">
-                <Mascot size={20} shape={agent.shape} face={agent.face} color={agent.color} />
+                <EmployeeAvatar agent={agent} size={20} />
               </span>
             )}
             <span className="max-w-[45%] shrink-0 truncate font-medium">{hit.title}</span>
@@ -174,7 +174,7 @@ export const SearchPalette = ({ team, onOpen, onClose }: SearchPaletteProps) => 
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.14, ease: "easeOut" }}
         onKeyDown={handleKey}
-        className="flex max-h-[70vh] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl border bg-background shadow-xl"
+        className="flex max-h-[70vh] w-full max-w-[620px] flex-col overflow-hidden rounded-panel border bg-background shadow-xl"
       >
         <div className="flex items-center gap-2.5 border-b px-3.5 py-2.5">
           <Search className="size-4 shrink-0 text-muted-foreground" />
@@ -199,7 +199,7 @@ export const SearchPalette = ({ team, onOpen, onClose }: SearchPaletteProps) => 
                   setFilter(item.value)
                   setActive(0)
                 }}
-                className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors duration-150 ${
+                className={`rounded-control-sm px-2 py-1 text-xs font-medium transition-colors duration-150 ${
                   item.value === filter ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >

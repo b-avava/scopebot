@@ -1,4 +1,5 @@
-import type { ActionPolicy, Agent, AgentPermissions, AgentSettings, AgentTone } from "@scope-bot/domain"
+import type { ActionPolicy, Agent, AgentPermissions, AgentSettings, AgentTone, Department } from "@scope-bot/domain"
+import { LensAvatar } from "@scope-bot/ui/components/avatar/LensAvatar.tsx"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Input } from "@scope-bot/ui/components/motion/input.tsx"
 import {
@@ -25,11 +26,10 @@ import {
   X
 } from "lucide-react"
 import { type ReactNode, useEffect, useRef, useState } from "react"
-import { AvatarPicker } from "./AvatarPicker.tsx"
+import { ColorPicker, roleLabel, SignPicker } from "./Avatar.tsx"
 import { ConfirmChangeModal, type RiskyChange } from "./ConfirmChangeModal.tsx"
-import { Mascot } from "./Mascot.tsx"
 import { BackupModels, ModelField } from "./ModelSettings.tsx"
-import { jobs, timeZones } from "./sampleData.ts"
+import { timeZones } from "./sampleData.ts"
 import {
   backupsSummary,
   escalationSummary,
@@ -41,13 +41,18 @@ import {
 
 const SAVE_DELAY_MS = 400
 
-export const toSettings = ({ id: _id, pinned: _pinned, createdAt: _createdAt, ...settings }: Agent): AgentSettings =>
-  settings
+export const toSettings = ({
+  id: _id,
+  role: _role,
+  pinned: _pinned,
+  createdAt: _createdAt,
+  ...settings
+}: Agent): AgentSettings => settings
 
 type Page = "main" | "look" | "backups" | "style" | "instructions" | "permissions" | "limits" | "hours" | "escalation"
 
 const pageTitles: Record<Exclude<Page, "main">, string> = {
-  look: "Look",
+  look: "Colour",
   backups: "Backup models",
   style: "Style",
   instructions: "Instructions",
@@ -91,13 +96,13 @@ const weekdays = [
 const labelClasses = "text-[13px] font-medium text-muted-foreground"
 const hintClasses = "text-[13px] leading-[18px] text-muted-foreground"
 const fieldClasses =
-  "h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  "h-11 w-full rounded-control border bg-field px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 const textAreaClasses =
-  "w-full resize-none rounded-xl border bg-background px-3 py-2.5 text-sm leading-5 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-const inputClasses = { label: "px-0 text-[13px] text-muted-foreground", field: "rounded-xl" }
+  "w-full resize-none rounded-control border bg-field px-3 py-2.5 text-sm leading-5 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+const inputClasses = { label: "px-0 text-[13px] text-muted-foreground" }
 
 const chipClasses = (selected: boolean) =>
-  `rounded-full border px-3 py-1.5 text-[13px] font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring ${
+  `rounded-control-sm border px-3 py-1.5 text-[13px] font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring ${
     selected ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
   }`
 
@@ -107,7 +112,7 @@ const toNumber = (value: string, minimum: number, maximum: number) =>
 const Group = ({ title, children }: { readonly title: string; readonly children: ReactNode }) => (
   <section className="flex flex-col gap-1.5">
     <h3 className="px-1 text-[13px] font-medium text-muted-foreground">{title}</h3>
-    <div className="flex flex-col divide-y rounded-xl border">{children}</div>
+    <div className="flex flex-col divide-y rounded-card border">{children}</div>
   </section>
 )
 
@@ -125,7 +130,7 @@ const Row = ({
   <button
     type="button"
     onClick={onOpen}
-    className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm outline-none transition-colors duration-150 first:rounded-t-xl last:rounded-b-xl hover:bg-muted focus-visible:bg-muted"
+    className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm outline-none transition-colors duration-150 first:rounded-t-card last:rounded-b-card hover:bg-muted focus-visible:bg-muted"
   >
     <Icon className="size-4 shrink-0 text-muted-foreground" />
     <span className="shrink-0 font-medium">{label}</span>
@@ -165,11 +170,11 @@ const PolicyRow = ({
 }) => (
   <div className="flex flex-col gap-1.5">
     <span className="text-sm">{label}</span>
-    <fieldset aria-label={label} className="flex rounded-xl bg-muted p-0.5">
+    <fieldset aria-label={label} className="flex rounded-control bg-muted p-0.5">
       {policies.map((policy) => (
         <label
           key={policy.value}
-          className={`flex-1 cursor-pointer rounded-[10px] px-2 py-1.5 text-center text-[13px] font-medium transition-colors duration-150 has-focus-visible:ring-2 has-focus-visible:ring-ring ${
+          className={`flex-1 cursor-pointer rounded-control-sm px-2 py-1.5 text-center text-[13px] font-medium transition-colors duration-150 has-focus-visible:ring-2 has-focus-visible:ring-ring ${
             policy.value === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
           }`}
         >
@@ -217,8 +222,12 @@ const DiscountField = ({ value, onCommit }: { readonly value: number; readonly o
   )
 }
 
+/** Stands for "no department" in the select, which needs a value. */
+const NO_DEPARTMENT = "none"
+
 interface AgentSettingsPanelProps {
   readonly agent: Agent
+  readonly departments: ReadonlyArray<Department>
   readonly onSave: (settings: AgentSettings) => Promise<string | null>
   readonly onRemove: () => void
   readonly onClose: () => void
@@ -226,10 +235,17 @@ interface AgentSettingsPanelProps {
 }
 
 /** Settings next to the chat, so a change can be tried right away. Everything saves itself. */
-export const AgentSettingsPanel = ({ agent, onSave, onRemove, onClose, onOpenBusiness }: AgentSettingsPanelProps) => {
+export const AgentSettingsPanel = ({
+  agent,
+  departments,
+  onSave,
+  onRemove,
+  onClose,
+  onOpenBusiness
+}: AgentSettingsPanelProps) => {
   const [draft, setDraft] = useState(() => toSettings(agent))
   const [page, setPage] = useState<Page>("main")
-  const [openSelect, setOpenSelect] = useState<"job" | "zone" | null>(null)
+  const [openSelect, setOpenSelect] = useState<"department" | "zone" | null>(null)
   const [risky, setRisky] = useState<RiskyChange | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -299,17 +315,15 @@ export const AgentSettingsPanel = ({ agent, onSave, onRemove, onClose, onOpenBus
       }
     })
 
-  const jobOptions = jobs.some((job) => job === draft.job) ? jobs : [draft.job, ...jobs]
-
   const main = (
     <>
       <button
         type="button"
-        aria-label="Change look"
+        aria-label="Change colour"
         onClick={() => setPage("look")}
         className="group relative mx-auto rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Mascot size={72} shape={draft.shape} face={draft.face} color={draft.color} />
+        <LensAvatar size={72} color={draft.color} sign={draft.sign} />
         <span className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground group-hover:text-foreground">
           <Pencil className="size-3" />
         </span>
@@ -317,26 +331,54 @@ export const AgentSettingsPanel = ({ agent, onSave, onRemove, onClose, onOpenBus
 
       <div className="flex flex-col gap-3">
         <Input label="Name" value={draft.name} onChange={(name) => change({ name })} classNames={inputClasses} />
-        <div className={`flex flex-col gap-1.5 ${openSelect === "job" ? "relative z-20" : ""}`}>
-          <span className={labelClasses}>Job</span>
-          <Select
-            value={draft.job}
-            onValueChange={(job) => change({ job })}
-            open={openSelect === "job"}
-            onOpenChange={(open) => setOpenSelect(open ? "job" : null)}
-          >
-            <SelectTrigger className="h-11">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {jobOptions.map((job) => (
-                <SelectItem key={job} value={job}>
-                  {job}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Input
+          label="Job title"
+          value={draft.job}
+          onChange={(job) => {
+            // An empty title would not save, so it stays as it was until something is typed.
+            if (job.trim() !== "") change({ job })
+          }}
+          classNames={inputClasses}
+        />
+        <div className="flex flex-col gap-1.5">
+          <span className={labelClasses}>Sign on the avatar</span>
+          <SignPicker value={draft.sign} onChange={(sign) => change({ sign })} />
         </div>
+        {agent.role !== null && (
+          <p className="rounded-control bg-field px-3.5 py-3 text-xs leading-[17px] text-muted-foreground">
+            Started from the {roleLabel(agent.role)} role. The settings below are this employee's own now, change them
+            freely.
+          </p>
+        )}
+        {departments.length > 0 && (
+          <div className={`flex flex-col gap-1.5 ${openSelect === "department" ? "relative z-20" : ""}`}>
+            <span className={labelClasses}>Department</span>
+            <Select
+              value={
+                departments.some((item) => item.id === draft.departmentId) ? String(draft.departmentId) : NO_DEPARTMENT
+              }
+              onValueChange={(value) =>
+                change({
+                  departmentId: departments.find((item) => item.id === value)?.id ?? null
+                })
+              }
+              open={openSelect === "department"}
+              onOpenChange={(open) => setOpenSelect(open ? "department" : null)}
+            >
+              <SelectTrigger className="h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_DEPARTMENT}>No department</SelectItem>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <SwitchRow
           label="Active"
           hint="A paused employee does not answer"
@@ -348,7 +390,7 @@ export const AgentSettingsPanel = ({ agent, onSave, onRemove, onClose, onOpenBus
       <section className="flex flex-col gap-1.5">
         <h3 className="px-1 text-[13px] font-medium text-muted-foreground">Brain</h3>
         <ModelField value={draft} onChange={change} side="bottom" />
-        <div className="flex flex-col divide-y rounded-xl border">
+        <div className="flex flex-col divide-y rounded-card border">
           <Row icon={Copy} label="Backup models" value={backupsSummary(draft)} onOpen={() => setPage("backups")} />
           <Row
             icon={MessageCircle}
@@ -393,9 +435,10 @@ export const AgentSettingsPanel = ({ agent, onSave, onRemove, onClose, onOpenBus
     look: (
       <>
         <div className="mx-auto">
-          <Mascot size={96} shape={draft.shape} face={draft.face} color={draft.color} />
+          <LensAvatar size={96} color={draft.color} sign={draft.sign} />
         </div>
-        <AvatarPicker value={{ shape: draft.shape, face: draft.face, color: draft.color }} onChange={change} />
+        <p className={hintClasses}>The face shows what the employee is doing. The sign is set with the job title.</p>
+        <ColorPicker value={draft.color} onChange={(color) => change({ color })} />
       </>
     ),
     backups: (
@@ -567,7 +610,7 @@ export const AgentSettingsPanel = ({ agent, onSave, onRemove, onClose, onOpenBus
             type="button"
             aria-label="Back"
             onClick={() => setPage("main")}
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex size-8 items-center justify-center rounded-control-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronLeft className="size-4" />
           </button>
@@ -579,7 +622,7 @@ export const AgentSettingsPanel = ({ agent, onSave, onRemove, onClose, onOpenBus
           type="button"
           aria-label="Close settings"
           onClick={onClose}
-          className="ml-auto flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="ml-auto flex size-8 items-center justify-center rounded-control-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-4" />
         </button>

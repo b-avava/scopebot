@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { DepartmentId } from "./Department.ts"
 import { ModelChoice, ProviderId, ReasoningEffort } from "./Model.ts"
 
 /** Backups an agent can keep, in the order they are tried. */
@@ -6,38 +7,6 @@ export const MAX_BACKUP_MODELS = 8
 
 export const AgentId = Schema.String.pipe(Schema.brand("AgentId"))
 export type AgentId = typeof AgentId.Type
-
-export const AgentShape = Schema.Literals([
-  "circle",
-  "pebble",
-  "squircle",
-  "capsule",
-  "triangle",
-  "hexagon",
-  "cloud",
-  "droplet"
-])
-export type AgentShape = typeof AgentShape.Type
-
-export const AgentFace = Schema.Literals([
-  "neutral",
-  "attentive",
-  "surprised",
-  "excited",
-  "happy",
-  "laughing",
-  "angry",
-  "sad",
-  "scared",
-  "suspicious",
-  "confused",
-  "curious",
-  "proud",
-  "shy",
-  "unimpressed",
-  "sleepy"
-])
-export type AgentFace = typeof AgentFace.Type
 
 export const AgentTone = Schema.Literals(["friendly", "formal", "brief"])
 export type AgentTone = typeof AgentTone.Type
@@ -84,13 +53,23 @@ export const EscalationRules = Schema.Struct({
 })
 export type EscalationRules = typeof EscalationRules.Type
 
+/** A small mark on the avatar. Empty shows none. */
+export const AgentSign = Schema.Literals(["headset", "tag", "repeat", "chart"])
+export type AgentSign = typeof AgentSign.Type
+
+/** What an employee starts from when hired. It only picks the first settings. */
+export const AgentRole = Schema.Literals(["sales", "support", "follow-ups", "reports", "blank"])
+export type AgentRole = typeof AgentRole.Type
+
 /** What the business can change about an agent. */
 export const AgentSettings = Schema.Struct({
   name: Schema.NonEmptyString,
+  /** The job title in the business's own words. The model and customers see it. */
   job: Schema.NonEmptyString,
+  sign: Schema.NullOr(AgentSign),
+  /** Empty keeps the employee in the general team. */
+  departmentId: Schema.NullOr(DepartmentId),
   color: Schema.NonEmptyString,
-  shape: AgentShape,
-  face: AgentFace,
   tone: AgentTone,
   /** Special rules of the business, in its own words. */
   instructions: Schema.String,
@@ -112,11 +91,26 @@ export type AgentSettings = typeof AgentSettings.Type
 export const Agent = Schema.Struct({
   id: AgentId,
   ...AgentSettings.fields,
+  /** The role it was hired with. Empty for employees hired before roles. */
+  role: Schema.NullOr(AgentRole),
   /** Pinned employees stay at the top of the team. */
   pinned: Schema.Boolean,
   createdAt: Schema.String
 })
 export type Agent = typeof Agent.Type
+
+/**
+ * What an employee is doing now, worked out from data. The avatar shows it.
+ * Earlier entries win: a paused employee waiting for an approval is paused.
+ */
+export const AgentState = Schema.Literals(["paused", "approval", "with-person", "after-hours", "working"])
+export type AgentState = typeof AgentState.Type
+
+export const AgentStatus = Schema.Struct({
+  agentId: AgentId,
+  state: AgentState
+})
+export type AgentStatus = typeof AgentStatus.Type
 
 export const PinAgent = Schema.Struct({
   pinned: Schema.Boolean
@@ -127,36 +121,38 @@ export const CreateAgent = Schema.Struct({
   name: Schema.NonEmptyString,
   job: Schema.NonEmptyString,
   color: Schema.NonEmptyString,
-  shape: AgentShape,
-  face: AgentFace,
+  role: Schema.optionalKey(AgentRole),
   provider: Schema.optionalKey(ProviderId),
   model: Schema.optionalKey(Schema.String),
   reasoning: Schema.optionalKey(ReasoningEffort)
 })
 export type CreateAgent = typeof CreateAgent.Type
 
-type JobPreset = Pick<AgentSettings, "permissions" | "limits" | "tone">
+type RolePreset = Pick<AgentSettings, "permissions" | "limits" | "tone" | "sign">
 
-const frontDesk: JobPreset = {
+/** Everything risky waits for a person. The safe start for any job. */
+const blank: RolePreset = {
   tone: "friendly",
+  sign: null,
   limits: { maxDiscountPercent: 0, maxMessagesPerDay: 30 },
   permissions: {
-    bookAppointments: "auto",
-    rescheduleAppointments: "auto",
+    bookAppointments: "approve",
+    rescheduleAppointments: "approve",
     cancelAppointments: "approve",
-    offerDiscounts: "deny",
-    sendPaymentLinks: "deny",
+    offerDiscounts: "approve",
+    sendPaymentLinks: "approve",
     sendDocuments: "approve"
   }
 }
 
-const jobPresets: Record<string, JobPreset> = {
-  "Front desk": frontDesk,
-  Sales: {
+/** First settings for each role. After hiring they belong to the employee. */
+export const rolePresets: Record<AgentRole, RolePreset> = {
+  sales: {
     tone: "friendly",
+    sign: "tag",
     limits: { maxDiscountPercent: 10, maxMessagesPerDay: 30 },
     permissions: {
-      bookAppointments: "auto",
+      bookAppointments: "approve",
       rescheduleAppointments: "approve",
       cancelAppointments: "deny",
       offerDiscounts: "approve",
@@ -164,20 +160,35 @@ const jobPresets: Record<string, JobPreset> = {
       sendDocuments: "approve"
     }
   },
-  "Follow-ups": {
+  support: {
     tone: "friendly",
+    sign: "headset",
+    limits: { maxDiscountPercent: 0, maxMessagesPerDay: 40 },
+    permissions: {
+      bookAppointments: "approve",
+      rescheduleAppointments: "approve",
+      cancelAppointments: "approve",
+      offerDiscounts: "deny",
+      sendPaymentLinks: "deny",
+      sendDocuments: "approve"
+    }
+  },
+  "follow-ups": {
+    tone: "friendly",
+    sign: "repeat",
     limits: { maxDiscountPercent: 0, maxMessagesPerDay: 10 },
     permissions: {
       bookAppointments: "approve",
-      rescheduleAppointments: "auto",
+      rescheduleAppointments: "approve",
       cancelAppointments: "deny",
       offerDiscounts: "deny",
       sendPaymentLinks: "deny",
       sendDocuments: "deny"
     }
   },
-  Reports: {
+  reports: {
     tone: "brief",
+    sign: "chart",
     limits: { maxDiscountPercent: 0, maxMessagesPerDay: 30 },
     permissions: {
       bookAppointments: "deny",
@@ -187,13 +198,15 @@ const jobPresets: Record<string, JobPreset> = {
       sendPaymentLinks: "deny",
       sendDocuments: "deny"
     }
-  }
+  },
+  blank
 }
 
-/** Sensible settings for a new agent, based on its job. */
-export const defaultSettings = (input: CreateAgent): AgentSettings => ({
+/** Sensible settings for a new agent, from the role it starts with. */
+export const defaultSettings = ({ role = "blank", ...input }: CreateAgent): AgentSettings => ({
   ...input,
-  ...(jobPresets[input.job] ?? frontDesk),
+  ...rolePresets[role],
+  departmentId: null,
   instructions: "",
   provider: input.provider ?? "api",
   model: input.model ?? "",

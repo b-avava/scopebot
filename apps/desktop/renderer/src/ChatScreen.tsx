@@ -4,6 +4,7 @@ import {
   type ChatImage,
   type ChatMessage,
   type ConversationSummary,
+  type Department,
   type Escalation,
   MAX_MESSAGE_IMAGES,
   type SearchHit
@@ -15,16 +16,17 @@ import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { AudioLines, CircleHelp, FileText, Image, Puzzle, X } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AgentSettingsPanel, toSettings } from "./AgentSettingsPanel.tsx"
+import { EmployeeAvatar, watchArea } from "./Avatar.tsx"
 import { ChatTabs } from "./ChatTabs.tsx"
 import { CloseChatModal } from "./CloseChatModal.tsx"
 import { errorMessage, useConversations } from "./hooks.ts"
 import { toChatImage } from "./imageAttachment.ts"
-import { LiveMascot, Mascot, watchArea } from "./Mascot.tsx"
 import { ModelField } from "./ModelSettings.tsx"
 import { TitleBar } from "./TitleBar.tsx"
 
 interface ChatScreenProps {
   readonly agent: Agent
+  readonly departments: ReadonlyArray<Department>
   /** Where a search result wants to land. */
   readonly target: SearchHit | null
   readonly showSettings: boolean
@@ -38,11 +40,12 @@ interface ChatScreenProps {
 
 const HIGHLIGHT_MS = 1800
 
-const scrollIntoView = (element: HTMLDivElement | null) => element?.scrollIntoView({ block: "end" })
+// A ref callback may return its cleanup, and newer browsers return a promise from scrolling.
+const scrollIntoView = (element: HTMLDivElement | null) => {
+  void element?.scrollIntoView({ block: "end" })
+}
 
-const AgentAvatar = ({ agent }: { readonly agent: Agent }) => (
-  <Mascot size={24} shape={agent.shape} face={agent.face} color={agent.color} />
-)
+const AgentAvatar = ({ agent }: { readonly agent: Agent }) => <EmployeeAvatar agent={agent} size={24} />
 
 const imageUrl = (image: ChatImage) => `data:${image.mediaType};base64,${image.data}`
 
@@ -90,7 +93,7 @@ const Message = ({ agent, message }: { readonly agent: Agent; readonly message: 
 
 const EmptyChat = ({ agent }: { readonly agent: Agent }) => (
   <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-    <LiveMascot size={96} shape={agent.shape} face={agent.face} color={agent.color} />
+    <EmployeeAvatar agent={agent} size={96} live />
     <p className="text-sm text-muted-foreground">Write as a customer would and see how {agent.name} answers.</p>
   </div>
 )
@@ -125,7 +128,7 @@ const HandoffNotice = ({
   readonly onResume: () => void
 }) => (
   <div className="w-full max-w-[1120px] shrink-0 px-6 pb-3">
-    <div role="status" className="flex items-center justify-between gap-4 rounded-2xl bg-muted px-4 py-3">
+    <div role="status" className="flex items-center justify-between gap-4 rounded-card bg-muted px-4 py-3">
       <span className="flex min-w-0 flex-col">
         <span className="text-sm font-medium">{agent.name} passed this chat to you</span>
         <span className="truncate text-[13px] text-muted-foreground">{escalation.reason}</span>
@@ -146,7 +149,7 @@ interface Aside {
 
 /** Only the supervisor sees these, and they are gone when the chat is reopened. */
 const AsideCard = ({ agent, aside }: { readonly agent: Agent; readonly aside: Aside }) => (
-  <div className="flex flex-col gap-1.5 rounded-2xl border border-dashed px-4 py-3 text-sm">
+  <div className="flex flex-col gap-1.5 rounded-card border border-dashed px-4 py-3 text-sm">
     <span className="text-xs font-medium text-muted-foreground">Side question</span>
     <p className="whitespace-pre-wrap font-medium">{aside.question}</p>
     {aside.answer === null ? (
@@ -285,7 +288,7 @@ const Conversation = ({
               <div
                 key={message.id}
                 data-message-id={message.id}
-                className={`rounded-2xl transition-colors duration-500 ${message.id === highlighted ? "bg-muted" : ""}`}
+                className={`rounded-card transition-colors duration-500 ${message.id === highlighted ? "bg-muted" : ""}`}
               >
                 <Message agent={agent} message={message} />
               </div>
@@ -324,13 +327,13 @@ const Conversation = ({
           {(images.length > 0 || sideQuestion) && (
             <div className="flex flex-wrap items-center gap-2">
               {sideQuestion && (
-                <span className="flex h-8 items-center gap-1.5 rounded-full border pl-3 pr-1 text-[13px]">
+                <span className="flex h-8 items-center gap-1.5 rounded-control-sm border pl-3 pr-1 text-[13px]">
                   Side question
                   <button
                     type="button"
                     aria-label="Cancel side question"
                     onClick={() => setSideQuestion(false)}
-                    className="flex size-6 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <X className="size-3.5" />
                   </button>
@@ -398,6 +401,7 @@ const Conversation = ({
 
 export const ChatScreen = ({
   agent,
+  departments,
   target,
   showSettings,
   onChatChanged,
@@ -426,7 +430,7 @@ export const ChatScreen = ({
   return (
     <>
       <TitleBar>
-        <Mascot size={20} shape={agent.shape} face={agent.face} color={agent.color} />
+        <EmployeeAvatar agent={agent} size={20} />
         <span className="text-sm font-semibold">{agent.name}</span>
         <span className="text-sm text-muted-foreground">{agent.job}</span>
         {!agent.active && <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">Paused</span>}
@@ -467,6 +471,7 @@ export const ChatScreen = ({
         {showSettings && (
           <AgentSettingsPanel
             agent={agent}
+            departments={departments}
             onSave={onSaveSettings}
             onRemove={onRemove}
             onClose={onCloseSettings}

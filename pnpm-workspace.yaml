@@ -2,17 +2,24 @@ packages:
   - apps/*
   - packages/*
 
+# Only version checks, not needed to run.
+allowBuilds:
+  "@whiskeysockets/baileys": false
+  protobufjs: false
+
 # All Effect packages are released in lockstep and must stay on the same version.
 catalog:
   "@biomejs/biome": 2.6.5
   "@anthropic-ai/sdk": ^1.4.0
   "@effect/platform-node": 4.1.2
+  "@effect/sql-pg": 4.1.2
   "@effect/vitest": 4.1.2
   "@fontsource-variable/google-sans": ^5.3.2
   "@tailwindcss/vite": ^4.3.4
   "@types/react": ^19.0.0
   "@types/react-dom": ^19.0.0
   "@vitejs/plugin-react": ^6.2.1
+  "@whiskeysockets/baileys": 7.0.0-rc14
   clsx: ^2.1.1
   "@types/node": ^24.0.0
   effect: 4.1.2
@@ -20,6 +27,8 @@ catalog:
   electron-vite: ^6.0.0
   lucide-react: ^1.67.0
   motion: ^14.9.0
+  qrcode: ^1.5.4
+  "@types/qrcode": ^1.5.6
   react: ^19.3.1
   react-dom: ^19.3.1
   tailwind-merge: ^3.7.0

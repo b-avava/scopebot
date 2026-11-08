@@ -1,5 +1,14 @@
 @import "@scope-bot/ui/styles.css";
 
+/* The strip that holds the window controls. `titleBarColors` in main/index.ts must match. */
+:root {
+  --title-strip: #ececee;
+}
+
+.dark {
+  --title-strip: #1c2025;
+}
+
 /* The window has no native title bar, so these areas move it. */
 .window-drag {
   -webkit-app-region: drag;

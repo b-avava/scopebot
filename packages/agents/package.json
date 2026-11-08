@@ -13,6 +13,7 @@
     "@anthropic-ai/sdk": "catalog:",
     "@scope-bot/db": "workspace:*",
     "@scope-bot/domain": "workspace:*",
+    "@scope-bot/integrations": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
