@@ -1,6 +1,6 @@
 # Scope Bot
 
-> An AI-native CRM where the work is done by AI employees (agents), and humans supervise.
+> An open-source, AI-native CRM where the work is done by AI employees (agents), and humans supervise. Businesses deploy it on their own server.
 
 This README is the single source of truth for the project. It is written for both humans and AI coding assistants. **AI assistants: read this file fully before making any change, and follow the rules in [Working with AI](#working-with-ai).**
 
@@ -14,9 +14,11 @@ Traditional CRMs (Bitrix24, amoCRM, etc.) are tools that people work _in_. Scope
 - Agents handle conversations (WhatsApp, Telegram, phone), keep contacts and deals up to date, follow up with clients, process payments and produce reports.
 - Humans focus on oversight, decisions and exceptions.
 
-**Initial target market:** small and mid-sized businesses in the CIS and Caucasus, in any industry. Scope Bot is a general product: the core serves every business, and what only some need, such as booking, comes as optional modules.
+**Open source and self-hosted.** Scope Bot is not a commercial service. It is a ready project that a business, or someone helping it, deploys on its own server or computer and runs with its own LLM and channel accounts. There is no hosted version to sign up for, and nothing depends on a service run by the authors.
 
-**Positioning:** we do not try to out-feature Bitrix24. The CRM core stays minimal; the product's value is in what agents do on top of it.
+**Who it is for:** small and mid-sized businesses, first of all in the CIS and Caucasus, in any industry. Scope Bot is a general product: the core serves every business, and what only some need, such as booking, comes as optional modules.
+
+**Positioning:** we do not try to out-feature Bitrix24. The CRM core stays minimal; the project's value is in what agents do on top of it.
 
 ---
 
@@ -56,7 +58,7 @@ These are non-negotiable and should guide every design decision.
 
 - **All agents run on the server.** Agents must work 24/7, receive webhooks and serve multiple users. The desktop app is a client and a local executor, never the place where agent logic lives.
 - **The desktop main process is a thin executor.** The server sends commands ("list files in allowed folder", "take screenshot", "click element"), the executor performs them and returns results. LLM calls, API keys, agent logic and logs stay on the server.
-- **Self-hosted option.** The server must be deployable inside a client's office (Docker Compose) for businesses that do not want their data in the cloud. Avoid hard dependencies on cloud-only services.
+- **Self-hosted first.** Every business runs its own server, in its office or on a rented machine (Docker Compose). Setup must be possible without help from the authors. Avoid hard dependencies on cloud-only services; a service that needs an account, such as a channel or an LLM provider, uses the business's own account.
 - **One language end to end.** TypeScript everywhere; Effect on server and in Electron main; shared schemas across all layers.
 
 ### Local executor tiers
@@ -86,7 +88,7 @@ The agent runtime must pick the lowest tier that can complete the task.
 | Lint, format | Biome (rules in `biome.json`)                                                                                                                                                                                                                   |
 | CI           | GitHub Actions: lint, typecheck, test, build                                                                                                                                                                                                    |
 | Computer use | `desktopCapturer` for screenshots, nut.js for input, small native sidecar (C#/.NET or Rust) for Windows UI Automation                                                                                                                           |
-| Deployment   | Docker Compose (self-hosted), same images for cloud                                                                                                                                                                                             |
+| Deployment   | Docker Compose on the business's own machine or server                                                                                                                                                                                          |
 
 ### Effect version warning (important for AI assistants)
 
@@ -222,7 +224,7 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 - **Instagram:** Direct messages through the official Instagram API with Instagram Login (see ADR 0017). It needs a Meta app on the server and a public HTTPS address, because Instagram sends new messages to a webhook. A business may answer within a day of the customer's last message, and a person within a week.
 - **Telephony (phase 2):** SIP integration + realtime voice. Call-recording consent must be handled per jurisdiction.
 - **Payments (phase 2+):** pluggable providers; Georgia and Russia require different providers.
-- **Bitrix24 import:** contacts, companies, deals, stages, activities. A key selling point: "move from Bitrix in a day without losing data". Must be idempotent and resumable.
+- **Bitrix24 import:** contacts, companies, deals, stages, activities. It matters for adoption: "move from Bitrix in a day without losing data". Must be idempotent and resumable.
 
 ---
 
@@ -237,6 +239,7 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 - Bitrix24 import
 - Dashboard: funnel conversion by stage, response times
 - Desktop app: UI + notifications for approvals (executor not required yet)
+- Self-hosted setup: Docker Compose with PostgreSQL, a setup guide, and a way to update an existing install
 
 ### Phase 2
 
@@ -313,6 +316,5 @@ Output: complete files or exact diffs; list of what was not verified.
 - Which LLM providers and models per agent type (cost vs quality, Russian/Georgian language quality)?
 - Which voice stack for phase 2?
 - Payment providers per country.
-- Pricing model: per agent, per conversation, or per business?
-- Cloud region and data residency requirements for businesses with sensitive data.
-- Who is the first pilot customer?
+- Which licence? It must let businesses use Scope Bot for their work and fit the GPL-3.0 `libsignal` that WhatsApp brings in (ADR 0015).
+- What a business must know about data residency before choosing where to run its server.
