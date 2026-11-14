@@ -2,7 +2,9 @@ import { type BusinessProfile, emptyBusinessProfile } from "@scope-bot/domain"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Input } from "@scope-bot/ui/components/motion/input.tsx"
 import { useEffect, useState } from "react"
+import { BusinessFeatures } from "./BusinessFeatures.tsx"
 import { useCrm } from "./CrmContext.tsx"
+import { Tab } from "./CrmParts.tsx"
 import { errorMessage } from "./hooks.ts"
 import { TitleBar } from "./TitleBar.tsx"
 
@@ -13,6 +15,7 @@ export const BusinessScreen = () => {
   const [saved, setSaved] = useState<BusinessProfile>(emptyBusinessProfile)
   const [draft, setDraft] = useState<BusinessProfile>(emptyBusinessProfile)
   const [status, setStatus] = useState<string | null>(null)
+  const [page, setPage] = useState<"profile" | "features">("profile")
 
   useEffect(() => {
     void window.scopeBot.getBusiness().then((result) => {
@@ -46,9 +49,19 @@ export const BusinessScreen = () => {
     <>
       <TitleBar>
         <span className="text-sm font-semibold">Business</span>
+        <div className="flex items-center gap-0.5 pl-2">
+          <Tab active={page === "profile"} onSelect={() => setPage("profile")}>
+            Profile
+          </Tab>
+          <Tab active={page === "features"} onSelect={() => setPage("features")}>
+            Features
+          </Tab>
+        </div>
       </TitleBar>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      {page === "features" && <BusinessFeatures businessName={saved.name} />}
+
+      <div className={page === "profile" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-[640px] flex-col gap-5 px-6 py-7">
             <p className="text-[13px] leading-[18px] text-muted-foreground">

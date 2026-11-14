@@ -25,7 +25,7 @@ import {
 } from "@scope-bot/integrations"
 import { Context, Effect, FiberSet, Layer, Option } from "effect"
 import { Agents, nowIso } from "./Agents.ts"
-import { makeInbox, type SendText } from "./ChannelInbox.ts"
+import { type AppointmentStepError, makeInbox, type SendText } from "./ChannelInbox.ts"
 
 const MAX_RETRY_MS = 60_000
 const FIRST_RETRY_MS = 2_000
@@ -70,10 +70,16 @@ export class WhatsApp extends Context.Service<
       chatId: ConversationId,
       text: string
     ): Effect.Effect<ChatMessage, ConversationNotFound | WhatsAppNotLinked | WhatsAppSendFailed>
+    /** The employee writes first, like a reminder. The audit log gets the summary. */
+    notify(
+      chatId: ConversationId,
+      text: string,
+      summary: string
+    ): Effect.Effect<ChatMessage, ConversationNotFound | WhatsAppNotLinked | WhatsAppSendFailed>
     sendDraft(
       id: MessageId,
       text?: string
-    ): Effect.Effect<ChatMessage, DraftNotFound | WhatsAppNotLinked | WhatsAppSendFailed>
+    ): Effect.Effect<ChatMessage, DraftNotFound | WhatsAppNotLinked | WhatsAppSendFailed | AppointmentStepError>
     discardDraft(id: MessageId): Effect.Effect<ChatMessage, DraftNotFound>
     /** Gives a chat a person took over back to the employee. */
     resume(chatId: ConversationId): Effect.Effect<void, ConversationNotFound>
@@ -378,6 +384,11 @@ export class WhatsApp extends Context.Service<
           yield* inbox.findChat(chatId)
           const business = yield* requireLinked
           return yield* inbox.write(chatId, text, sendVia(business))
+        }),
+        notify: Effect.fn("WhatsApp.notify")(function* (chatId, text, summary) {
+          yield* inbox.findChat(chatId)
+          const business = yield* requireLinked
+          return yield* inbox.notify(chatId, text, summary, sendVia(business))
         }),
         sendDraft: Effect.fn("WhatsApp.sendDraft")(function* (id, text) {
           const business = yield* requireLinked

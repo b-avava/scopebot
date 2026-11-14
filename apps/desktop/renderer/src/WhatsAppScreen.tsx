@@ -56,16 +56,19 @@ const Title = ({
 const Inbox = ({
   agents,
   waitingOnly,
+  chatId,
   onChanged
 }: {
   readonly agents: ReadonlyArray<Agent>
   readonly waitingOnly: boolean
+  /** The chat to open first, such as one picked in the activity log. */
+  readonly chatId: string | null
   readonly onChanged: () => void
 }) => {
   const { chats, reload } = useWhatsAppChats(true)
   const rows: ReadonlyArray<ChatRow> = chats.map(({ phone, ...chat }) => ({ ...chat, handle: phone, via: null }))
   const shown = waitingOnly ? rows.filter((chat) => chat.drafts > 0) : rows
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(chatId)
   const selected = shown.find((chat) => chat.id === selectedId) ?? shown[0]
 
   return (
@@ -97,7 +100,13 @@ const Inbox = ({
   )
 }
 
-export const WhatsAppScreen = ({ agents }: { readonly agents: ReadonlyArray<Agent> }) => {
+export const WhatsAppScreen = ({
+  agents,
+  chatId = null
+}: {
+  readonly agents: ReadonlyArray<Agent>
+  readonly chatId?: string | null
+}) => {
   const { status, error, refresh, saveSettings, link, cancel, unlink } = useWhatsApp()
   const [tab, setTab] = useState<Section>("chats")
   const { chats, reload } = useWhatsAppChats(status?.state === "linked")
@@ -129,6 +138,7 @@ export const WhatsAppScreen = ({ agents }: { readonly agents: ReadonlyArray<Agen
         <Inbox
           agents={agents}
           waitingOnly={tab === "waiting"}
+          chatId={chatId}
           onChanged={() => {
             void reload()
             void refresh()

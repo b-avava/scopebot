@@ -2,12 +2,16 @@ import { Api } from "@scope-bot/contracts"
 import {
   ActivityId,
   ActivityPatch,
+  ActivityQuery,
   AgentId,
   AgentSettings,
+  AppointmentId,
+  AppointmentOutcome,
   ApprovalDecision,
   ApprovalId,
   type AuthSession,
   BusinessProfile,
+  CalendarSettings,
   ChangePassword,
   ChannelSettings,
   ConnectTelegram,
@@ -17,15 +21,22 @@ import {
   CreateAgent,
   DealDetails,
   DealId,
+  DecideSuggestion,
   DepartmentDetails,
   DepartmentId,
+  DraftRule,
+  EditQuestion,
+  GiveFeedback,
   type InstagramLogin,
   JoinTeam,
   LinkWhatsApp,
   Login,
   MessageId,
+  MoveAppointment,
   NewActivity,
+  NewAppointment,
   NewInvite,
+  NewRule,
   PinAgent,
   PipelineDetails,
   PipelineId,
@@ -34,6 +45,9 @@ import {
   ProviderPreferences,
   Register,
   RenameConversation,
+  RuleDecision,
+  RuleId,
+  RulePatch,
   SendDraft,
   SendMessage,
   SendWhatsApp,
@@ -41,6 +55,10 @@ import {
   ServiceId,
   ServicePreview,
   SideQuestion,
+  SlotQuery,
+  SpecialistDetails,
+  SpecialistId,
+  Transcribe,
   UserId,
   WhatsAppSettings
 } from "@scope-bot/domain"
@@ -64,6 +82,7 @@ const errorCodes: Record<string, BridgeError> = {
   ServiceNotFound: "gone",
   ActivityNotFound: "gone",
   ApprovalNotPending: "gone",
+  ActionNotFound: "gone",
   StageInUse: "stage-in-use",
   PipelineInvalid: "pipeline-invalid",
   AgentPaused: "paused",
@@ -82,6 +101,7 @@ const errorCodes: Record<string, BridgeError> = {
   Forbidden: "forbidden",
   InviteInvalid: "invite-invalid",
   DraftNotFound: "gone",
+  SuggestionNotFound: "gone",
   WhatsAppNotLinked: "whatsapp-not-linked",
   WhatsAppNeedsAgent: "whatsapp-needs-agent",
   WhatsAppSendFailed: "whatsapp-send-failed",
@@ -93,18 +113,49 @@ const errorCodes: Record<string, BridgeError> = {
   InstagramNotConnected: "instagram-not-connected",
   InstagramNeedsAgent: "instagram-needs-agent",
   InstagramWindowClosed: "instagram-window-closed",
-  InstagramSendFailed: "instagram-send-failed"
+  InstagramSendFailed: "instagram-send-failed",
+  CalendarOff: "calendar-off",
+  SpecialistNotFound: "gone",
+  AppointmentNotFound: "gone",
+  AppointmentClosed: "appointment-closed",
+  TimeTaken: "time-taken",
+  TimeUnavailable: "time-unavailable",
+  CannotAnswerAgain: "cannot-answer-again",
+  RuleNotFound: "gone",
+  TooManyRules: "too-many-rules",
+  VoiceNotConfigured: "voice-not-configured",
+  VoiceFailed: "voice-failed",
+  NothingHeard: "nothing-heard"
 }
+
+/** A key the speech provider rejected needs a person, not another try, so it has a code of its own. */
+const codeOf = (error: { readonly _tag: string; readonly reason?: unknown }): BridgeError =>
+  error._tag === "VoiceFailed" && error.reason === "key_rejected"
+    ? "voice-key-rejected"
+    : (errorCodes[error._tag] ?? "offline")
 
 const toResult = <A, E extends { readonly _tag: string }>(
   effect: Effect.Effect<A, E>
 ): Effect.Effect<BridgeResult<A>> =>
   effect.pipe(
     Effect.map((value) => ({ ok: true as const, value })),
-    Effect.catch((error) => Effect.succeed({ ok: false as const, error: errorCodes[error._tag] ?? "offline" }))
+    Effect.catch((error) => Effect.succeed({ ok: false as const, error: codeOf(error) }))
   )
 
 // Everything below comes from the renderer, so it is validated before use.
+const decodeCalendarSettings = Schema.decodeUnknownEffect(CalendarSettings)
+const decodeSpecialist = Schema.decodeUnknownEffect(SpecialistDetails)
+const decodeSpecialistId = Schema.decodeUnknownEffect(SpecialistId)
+const decodeAppointmentId = Schema.decodeUnknownEffect(AppointmentId)
+const decodeSuggestionDecision = Schema.decodeUnknownEffect(DecideSuggestion)
+const decodeNewAppointment = Schema.decodeUnknownEffect(NewAppointment)
+const decodeMove = Schema.decodeUnknownEffect(MoveAppointment)
+const decodeOutcome = Schema.decodeUnknownEffect(AppointmentOutcome)
+const decodeSlotQuery = Schema.decodeUnknownEffect(SlotQuery)
+const decodeText = Schema.decodeUnknownEffect(Schema.String)
+const decodeLinks = Schema.decodeUnknownEffect(
+  Schema.Struct({ contactId: Schema.optionalKey(ContactId), dealId: Schema.optionalKey(DealId) })
+)
 const decodeId = Schema.decodeUnknownEffect(AgentId)
 const decodeConversation = Schema.decodeUnknownEffect(ConversationId)
 const decodeRename = Schema.decodeUnknownEffect(RenameConversation)
@@ -150,6 +201,19 @@ const decodeDraft = Schema.decodeUnknownEffect(SendDraft)
 const decodeMessageId = Schema.decodeUnknownEffect(MessageId)
 const decodeChannelSettings = Schema.decodeUnknownEffect(ChannelSettings)
 const decodeConnectTelegram = Schema.decodeUnknownEffect(ConnectTelegram)
+const decodeActivityQuery = Schema.decodeUnknownEffect(ActivityQuery)
+const decodeEditQuestion = Schema.decodeUnknownEffect(EditQuestion)
+const decodeVersion = Schema.decodeUnknownEffect(Schema.Int)
+const decodeTranscribe = Schema.decodeUnknownEffect(Transcribe)
+const decodeVoiceKey = Schema.decodeUnknownEffect(ProviderKey)
+const decodeFeedback = Schema.decodeUnknownEffect(GiveFeedback)
+const decodeRuleId = Schema.decodeUnknownEffect(RuleId)
+const decodeNewRule = Schema.decodeUnknownEffect(NewRule)
+const decodeDraftRule = Schema.decodeUnknownEffect(DraftRule)
+const decodeRulePatch = Schema.decodeUnknownEffect(RulePatch)
+const decodeRuleDecision = Schema.decodeUnknownEffect(RuleDecision)
+
+const ruleParams = (id: unknown, ruleId: unknown) => Effect.all({ id: decodeId(id), ruleId: decodeRuleId(ruleId) })
 
 export class ServerConnection extends Context.Service<
   ServerConnection,
@@ -249,6 +313,47 @@ export class ServerConnection extends Context.Service<
     sendInstagramDraft(id: unknown, text: unknown): Bridged<"sendInstagramDraft">
     discardInstagramDraft(id: unknown): Bridged<"discardInstagramDraft">
     resumeInstagramChat(chatId: unknown): Bridged<"resumeInstagramChat">
+    readonly getCalendarSettings: Bridged<"getCalendarSettings">
+    saveCalendarSettings(settings: unknown): Bridged<"saveCalendarSettings">
+    readonly listSpecialists: Bridged<"listSpecialists">
+    createSpecialist(details: unknown): Bridged<"createSpecialist">
+    updateSpecialist(id: unknown, details: unknown): Bridged<"updateSpecialist">
+    removeSpecialist(id: unknown): Bridged<"removeSpecialist">
+    listAppointments(from: unknown, to: unknown): Bridged<"listAppointments">
+    listLinkedAppointments(links: unknown): Bridged<"listLinkedAppointments">
+    findSlots(query: unknown): Bridged<"findSlots">
+    bookAppointment(input: unknown): Bridged<"bookAppointment">
+    moveAppointment(id: unknown, to: unknown): Bridged<"moveAppointment">
+    recordAppointment(id: unknown, outcome: unknown): Bridged<"recordAppointment">
+    cancelAppointment(id: unknown, reason: unknown): Bridged<"cancelAppointment">
+    approveAppointment(id: unknown): Bridged<"approveAppointment">
+    listAppointmentReminders(id: unknown): Bridged<"listAppointmentReminders">
+    getAppointment(id: unknown): Bridged<"getAppointment">
+    listActivity(query: unknown): Bridged<"listActivity">
+    listActionSteps(id: unknown): Bridged<"listActionSteps">
+    decideSuggestion(
+      id: unknown,
+      conversationId: unknown,
+      messageId: unknown,
+      decision: unknown
+    ): Bridged<"decideSuggestion">
+    listChatActions(id: unknown, conversationId: unknown): Bridged<"listChatActions">
+    readonly voiceStatus: Bridged<"voiceStatus">
+    saveVoiceKey(key: unknown): Bridged<"saveVoiceKey">
+    readonly removeVoiceKey: Bridged<"removeVoiceKey">
+    transcribe(input: unknown): Bridged<"transcribe">
+    watchAnswer(id: unknown, conversationId: unknown, after: unknown): Bridged<"watchAnswer">
+    stopAnswer(id: unknown, conversationId: unknown): Bridged<"stopAnswer">
+    answerAgain(id: unknown, conversationId: unknown): Bridged<"answerAgain">
+    editQuestion(id: unknown, conversationId: unknown, text: unknown): Bridged<"editQuestion">
+    giveFeedback(id: unknown, conversationId: unknown, messageId: unknown, input: unknown): Bridged<"giveFeedback">
+    listFeedback(id: unknown, conversationId: unknown): Bridged<"listFeedback">
+    listRules(id: unknown): Bridged<"listRules">
+    addRule(id: unknown, input: unknown): Bridged<"addRule">
+    draftRule(id: unknown, input: unknown): Bridged<"draftRule">
+    changeRule(id: unknown, ruleId: unknown, patch: unknown): Bridged<"changeRule">
+    decideRule(id: unknown, ruleId: unknown, accept: unknown): Bridged<"decideRule">
+    removeRule(id: unknown, ruleId: unknown): Bridged<"removeRule">
   }
 >()("@scope-bot/desktop/main/ServerConnection") {
   static readonly layerNoDeps = Layer.effect(
@@ -653,7 +758,172 @@ export class ServerConnection extends Context.Service<
               Effect.flatMap((id) => client.telegram.resume({ params: { id } })),
               Effect.asVoid
             )
-          )
+          ),
+        getCalendarSettings: toResult(client.calendar.settings()),
+        saveCalendarSettings: (settings) =>
+          toResult(
+            decodeCalendarSettings(settings).pipe(
+              Effect.flatMap((payload) => client.calendar.saveSettings({ payload }))
+            )
+          ),
+        listSpecialists: toResult(client.calendar.specialists()),
+        createSpecialist: (details) =>
+          toResult(
+            decodeSpecialist(details).pipe(Effect.flatMap((payload) => client.calendar.createSpecialist({ payload })))
+          ),
+        updateSpecialist: (id, details) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeSpecialistId(id) }
+              return yield* client.calendar.updateSpecialist({ params, payload: yield* decodeSpecialist(details) })
+            })
+          ),
+        removeSpecialist: (id) =>
+          toResult(
+            decodeSpecialistId(id).pipe(
+              Effect.flatMap((id) => client.calendar.removeSpecialist({ params: { id } })),
+              Effect.asVoid
+            )
+          ),
+        listAppointments: (from, to) =>
+          toResult(
+            Effect.all([decodeText(from), decodeText(to)]).pipe(
+              Effect.flatMap(([from, to]) => client.calendar.appointments({ query: { from, to } }))
+            )
+          ),
+        listLinkedAppointments: (links) =>
+          toResult(decodeLinks(links).pipe(Effect.flatMap((query) => client.calendar.appointmentsFor({ query })))),
+        findSlots: (query) =>
+          toResult(decodeSlotQuery(query).pipe(Effect.flatMap((payload) => client.calendar.slots({ payload })))),
+        bookAppointment: (input) =>
+          toResult(decodeNewAppointment(input).pipe(Effect.flatMap((payload) => client.calendar.book({ payload })))),
+        moveAppointment: (id, to) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeAppointmentId(id) }
+              return yield* client.calendar.move({ params, payload: yield* decodeMove(to) })
+            })
+          ),
+        recordAppointment: (id, outcome) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeAppointmentId(id) }
+              return yield* client.calendar.record({ params, payload: { outcome: yield* decodeOutcome(outcome) } })
+            })
+          ),
+        cancelAppointment: (id, reason) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeAppointmentId(id) }
+              return yield* client.calendar.cancel({ params, payload: { reason: yield* decodeText(reason) } })
+            })
+          ),
+        approveAppointment: (id) =>
+          toResult(decodeAppointmentId(id).pipe(Effect.flatMap((id) => client.calendar.approve({ params: { id } })))),
+        getAppointment: (id) =>
+          toResult(
+            decodeAppointmentId(id).pipe(Effect.flatMap((id) => client.calendar.appointment({ params: { id } })))
+          ),
+        decideSuggestion: (id, conversationId, messageId, decision) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* chatParams(id, conversationId)
+              return yield* client.chat.decide({
+                params: { ...params, messageId: yield* decodeMessageId(messageId) },
+                payload: yield* decodeSuggestionDecision({ decision })
+              })
+            })
+          ),
+        listChatActions: (id, conversationId) =>
+          toResult(
+            chatParams(id, conversationId).pipe(Effect.flatMap((params) => client.chat.conversationActions({ params })))
+          ),
+        voiceStatus: toResult(client.voice.status()),
+        saveVoiceKey: (key) =>
+          toResult(decodeVoiceKey({ key }).pipe(Effect.flatMap((payload) => client.voice.saveKey({ payload })))),
+        removeVoiceKey: toResult(client.voice.removeKey()),
+        transcribe: (input) =>
+          toResult(decodeTranscribe(input).pipe(Effect.flatMap((payload) => client.voice.transcribe({ payload })))),
+        watchAnswer: (id, conversationId, after) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* chatParams(id, conversationId)
+              return yield* client.chat.live({ params, query: { after: yield* decodeVersion(after) } })
+            })
+          ),
+        stopAnswer: (id, conversationId) =>
+          toResult(
+            chatParams(id, conversationId).pipe(
+              Effect.flatMap((params) => client.chat.stop({ params })),
+              Effect.asVoid
+            )
+          ),
+        answerAgain: (id, conversationId) =>
+          toResult(chatParams(id, conversationId).pipe(Effect.flatMap((params) => client.chat.regenerate({ params })))),
+        editQuestion: (id, conversationId, text) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* chatParams(id, conversationId)
+              return yield* client.chat.edit({ params, payload: yield* decodeEditQuestion({ text }) })
+            })
+          ),
+        giveFeedback: (id, conversationId, messageId, input) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* chatParams(id, conversationId)
+              return yield* client.coaching.giveFeedback({
+                params: { ...params, messageId: yield* decodeMessageId(messageId) },
+                payload: yield* decodeFeedback(input)
+              })
+            })
+          ),
+        listFeedback: (id, conversationId) =>
+          toResult(
+            chatParams(id, conversationId).pipe(Effect.flatMap((params) => client.coaching.feedback({ params })))
+          ),
+        listRules: (id) =>
+          toResult(decodeId(id).pipe(Effect.flatMap((id) => client.coaching.rules({ params: { id } })))),
+        addRule: (id, input) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeId(id) }
+              return yield* client.coaching.addRule({ params, payload: yield* decodeNewRule(input) })
+            })
+          ),
+        draftRule: (id, input) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = { id: yield* decodeId(id) }
+              return yield* client.coaching.draftRule({ params, payload: yield* decodeDraftRule(input) })
+            })
+          ),
+        changeRule: (id, ruleId, patch) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* ruleParams(id, ruleId)
+              return yield* client.coaching.changeRule({ params, payload: yield* decodeRulePatch(patch) })
+            })
+          ),
+        decideRule: (id, ruleId, accept) =>
+          toResult(
+            Effect.gen(function* () {
+              const params = yield* ruleParams(id, ruleId)
+              return yield* client.coaching.decideRule({ params, payload: yield* decodeRuleDecision({ accept }) })
+            })
+          ),
+        removeRule: (id, ruleId) =>
+          toResult(
+            ruleParams(id, ruleId).pipe(
+              Effect.flatMap((params) => client.coaching.removeRule({ params })),
+              Effect.asVoid
+            )
+          ),
+        listActivity: (query) =>
+          toResult(decodeActivityQuery(query).pipe(Effect.flatMap((query) => client.activity.list({ query })))),
+        listActionSteps: (id) =>
+          toResult(decodeText(id).pipe(Effect.flatMap((id) => client.activity.steps({ params: { id } })))),
+        listAppointmentReminders: (id) =>
+          toResult(decodeAppointmentId(id).pipe(Effect.flatMap((id) => client.calendar.reminders({ params: { id } }))))
       })
     })
   )

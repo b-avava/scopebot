@@ -1,5 +1,10 @@
-import { type ChannelChat, requireBusiness, Store } from "@scope-bot/db"
+import { type ChannelChat, CurrentViewer, requireBusiness, Store } from "@scope-bot/db"
 import {
+  type AgentAction,
+  type Appointment,
+  AppointmentClosed,
+  type AppointmentStep,
+  CalendarOff,
   type Channel,
   type ChannelSettings,
   type ChatMessage,
@@ -9,11 +14,14 @@ import {
   ConversationNotFound,
   DraftNotFound,
   emptyContactDetails,
-  type MessageId
+  type MessageId,
+  TimeTaken,
+  TimeUnavailable
 } from "@scope-bot/domain"
 import { Effect, Option, Semaphore } from "effect"
 import { AgentChat, newMessage } from "./AgentChat.ts"
 import { Agents, nowIso } from "./Agents.ts"
+import { Calendar } from "./Calendar.ts"
 import { Contacts } from "./Contacts.ts"
 
 /** A customer's message as every channel hands it over. */
@@ -29,6 +37,38 @@ export interface InboxMessage {
   /** Without the @, when the channel gives a username. */
   readonly username: string | null
   readonly text: string
+}
+
+/** Why a drafted reply was not sent: what it does to an appointment could not be done. */
+export type AppointmentStepError = TimeTaken | TimeUnavailable | AppointmentClosed | CalendarOff
+
+/**
+ * Does what a reply says to an appointment, as a person who agreed to it, so a
+ * person's rules apply. Returns the appointment as it is now.
+ */
+export const applyStep = (
+  calendar: Calendar["Service"],
+  step: AppointmentStep,
+  channel: Channel | null
+): Effect.Effect<Appointment, AppointmentStepError> => {
+  const done: Effect.Effect<Appointment, { readonly _tag: string }> =
+    step.kind === "book"
+      ? calendar.confirmHold(step.appointmentId, "booked")
+      : step.kind === "move"
+        ? calendar.move(
+            step.appointmentId,
+            { specialistId: step.specialistId, startsAt: step.startsAt },
+            { bookedBy: { agentId: null, channel } }
+          )
+        : calendar.cancel(step.appointmentId, step.reason)
+  return done.pipe(
+    Effect.mapError(
+      (error): AppointmentStepError =>
+        error instanceof TimeTaken || error instanceof TimeUnavailable || error instanceof CalendarOff
+          ? error
+          : new AppointmentClosed()
+    )
+  )
 }
 
 /** Sends text to an address on the channel, and returns the id the channel gave it. */
@@ -95,6 +135,7 @@ export const makeInbox = (channel: Channel) =>
     const chat = yield* AgentChat
     const agents = yield* Agents
     const contacts = yield* Contacts
+    const calendar = yield* Calendar
     const locks = new Map<string, Semaphore.Semaphore>()
 
     // One customer's messages are handled one at a time, so a fast second
@@ -238,10 +279,21 @@ export const makeInbox = (channel: Channel) =>
           createdAt: yield* nowIso,
           resolvedAt: null
         })
-        yield* audit(message, `Handed to a human: ${reason}`)
+        yield* audit(message, `Handed to a human: ${reason}`, { tool: "handoff" })
       })
 
-    const audit = (message: ChatMessage, summary: string) =>
+    // A person sending the draft agrees to what it does, so a person's rules apply.
+    const doStep = (step: AppointmentStep) => applyStep(calendar, step, channel).pipe(Effect.asVoid)
+
+    const stepText = { book: "booked the time", move: "moved the appointment", cancel: "cancelled the appointment" }
+
+    const sentSummary = (message: ChatMessage, changed: boolean) =>
+      [
+        changed ? "A person changed the drafted reply and sent it" : "A person sent the drafted reply",
+        message.appointment === undefined ? "" : `, and ${stepText[message.appointment.kind]}`
+      ].join("")
+
+    const audit = (message: ChatMessage, summary: string, extra: Partial<AgentAction> = {}) =>
       nowIso.pipe(
         Effect.flatMap((createdAt) =>
           store.appendAction({
@@ -254,8 +306,19 @@ export const makeInbox = (channel: Channel) =>
             model: "",
             inputTokens: 0,
             outputTokens: 0,
-            createdAt
+            createdAt,
+            conversationId: message.conversationId,
+            ...extra
           })
+        )
+      )
+
+    /** The person whose click sent or threw away a draft. Background work has none. */
+    const decidedBy = (agreed: boolean) =>
+      CurrentViewer.pipe(
+        Effect.map(
+          (viewer): Partial<AgentAction> =>
+            viewer === null ? {} : { decidedBy: { userId: viewer.userId, name: viewer.name, agreed } }
         )
       )
 
@@ -287,6 +350,18 @@ export const makeInbox = (channel: Channel) =>
       ),
       findChat,
       messages: (chatId: ConversationId) => findChat(chatId).pipe(Effect.andThen(store.conversationMessages(chatId))),
+      /** The employee writes first, like a reminder, with no person checking it. */
+      notify: <E>(chatId: ConversationId, text: string, summary: string, sendText: SendText<E>) =>
+        Effect.gen(function* () {
+          const conversation = yield* findChat(chatId)
+          const message = yield* newMessage(conversation.agentId, conversation.id, "agent", text, [], {
+            delivery: "sending"
+          })
+          yield* store.appendMessage(message)
+          const sent = yield* deliver(conversation, message, sendText)
+          yield* audit(sent, summary)
+          return sent
+        }),
       /** A person from the team writes to the customer themselves. */
       write: <E>(chatId: ConversationId, text: string, sendText: SendText<E>) =>
         Effect.gen(function* () {
@@ -301,13 +376,16 @@ export const makeInbox = (channel: Channel) =>
         Effect.gen(function* () {
           const { message, conversation } = yield* findDraft(id)
           const changed = text !== undefined && text.trim() !== message.text
-          const sending: ChatMessage = { ...message, text: changed ? text.trim() : message.text, delivery: "sending" }
+          // The appointment changes first: a reply that says "booked" must not go out when it was not.
+          if (message.appointment !== undefined) yield* doStep(message.appointment)
+          const sending: ChatMessage = {
+            ...message,
+            text: changed ? (text ?? "").trim() : message.text,
+            delivery: "sending"
+          }
           yield* store.saveMessage(sending)
           const sent = yield* deliver(conversation, sending, sendText)
-          yield* audit(
-            sent,
-            changed ? "A person changed the drafted reply and sent it" : "A person sent the drafted reply"
-          )
+          yield* audit(sent, sentSummary(message, changed), yield* decidedBy(true))
           // The customer now hears that a colleague takes over, so a person does.
           if (sent.handoff !== undefined) yield* handOver(sent, sent.handoff)
           return sent
@@ -323,7 +401,11 @@ export const makeInbox = (channel: Channel) =>
           const { message } = yield* findDraft(id)
           const discarded: ChatMessage = { ...message, delivery: "discarded" }
           yield* store.saveMessage(discarded)
-          yield* audit(discarded, "A person threw the drafted reply away")
+          // A time held for this reply is let go at once, not when the hold runs out.
+          if (message.appointment?.kind === "book") {
+            yield* calendar.releaseHold(message.appointment.appointmentId)
+          }
+          yield* audit(discarded, "A person threw the drafted reply away", yield* decidedBy(false))
           return discarded
         })
     }

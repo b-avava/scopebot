@@ -1,19 +1,31 @@
 import {
   Activities,
+  ActivityLog,
   AgentChat,
   Agents,
   Approvals,
+  Calendar,
+  Coaching,
   Contacts,
   Deals,
   Departments,
   Instagram,
   ModelProviders,
   Services,
+  Suggestions,
   Telegram,
+  Voice,
   WhatsApp
 } from "@scope-bot/agents"
 import { Api, CurrentSession } from "@scope-bot/contracts"
-import { Forbidden } from "@scope-bot/domain"
+import {
+  type Appointment,
+  type AppointmentId,
+  AppointmentNotFound,
+  Forbidden,
+  type SpecialistId,
+  SpecialistNotFound
+} from "@scope-bot/domain"
 import { Effect, Layer } from "effect"
 import { HttpApiBuilder } from "effect/http-api"
 import { Auth } from "./Auth.ts"
@@ -227,6 +239,7 @@ export const ChatApiHandlers = HttpApiBuilder.group(
   "chat",
   Effect.fn(function* (handlers) {
     const chat = yield* AgentChat
+    const suggestions = yield* Suggestions
 
     return handlers.handleAll({
       conversations: ({ params }) => chat.conversations(params.id),
@@ -239,7 +252,70 @@ export const ChatApiHandlers = HttpApiBuilder.group(
       ask: ({ params, payload }) => chat.ask(params.id, params.conversationId, payload.text),
       actions: ({ params }) => chat.actions(params.id),
       state: ({ params }) => chat.state(params.id, params.conversationId),
-      resume: ({ params }) => chat.resume(params.id, params.conversationId)
+      resume: ({ params }) => chat.resume(params.id, params.conversationId),
+      conversationActions: ({ params }) => chat.conversationActions(params.id, params.conversationId),
+      live: ({ params, query }) => chat.live(params.id, params.conversationId, query.after),
+      stop: ({ params }) => chat.stop(params.id, params.conversationId),
+      regenerate: ({ params }) => chat.regenerate(params.id, params.conversationId),
+      edit: ({ params, payload }) => chat.edit(params.id, params.conversationId, payload.text),
+      decide: ({ params, payload }) =>
+        suggestions.decide(params.id, params.conversationId, params.messageId, payload.decision)
+    })
+  })
+)
+
+/** Anyone gives feedback and suggests rules; owners and admins decide them (ADR 0023). */
+export const CoachingApiHandlers = HttpApiBuilder.group(
+  Api,
+  "coaching",
+  Effect.fn(function* (handlers) {
+    const coaching = yield* Coaching
+    const chat = yield* AgentChat
+    const decides = CurrentSession.pipe(Effect.map(({ account }) => account.user.role !== "member"))
+
+    return handlers.handleAll({
+      giveFeedback: ({ params, payload }) =>
+        coaching.giveFeedback(params.id, params.conversationId, params.messageId, payload),
+      feedback: ({ params }) => coaching.feedback(params.id, params.conversationId),
+      rules: ({ params }) => coaching.rules(params.id),
+      addRule: ({ params, payload }) =>
+        decides.pipe(Effect.flatMap((manager) => coaching.addRule(params.id, payload, manager))),
+      draftRule: ({ params, payload }) => chat.draftRule(params.id, payload.note, payload.messageId),
+      changeRule: ({ params, payload }) =>
+        requireManager.pipe(Effect.andThen(coaching.changeRule(params.id, params.ruleId, payload))),
+      decideRule: ({ params, payload }) =>
+        requireManager.pipe(Effect.andThen(coaching.decideRule(params.id, params.ruleId, payload))),
+      removeRule: ({ params }) => requireManager.pipe(Effect.andThen(coaching.removeRule(params.id, params.ruleId)))
+    })
+  })
+)
+
+/** Anyone in the team may speak to an employee; the key is the business's, so owners and admins keep it. */
+export const VoiceApiHandlers = HttpApiBuilder.group(
+  Api,
+  "voice",
+  Effect.fn(function* (handlers) {
+    const voice = yield* Voice
+
+    return handlers.handleAll({
+      status: () => voice.status,
+      saveKey: ({ payload }) => requireManager.pipe(Effect.andThen(voice.saveKey(payload))),
+      removeKey: () => requireManager.pipe(Effect.andThen(voice.removeKey)),
+      transcribe: ({ payload }) => voice.transcribe(payload)
+    })
+  })
+)
+
+/** Owners and admins supervise the employees, so only they read the log. */
+export const ActivityApiHandlers = HttpApiBuilder.group(
+  Api,
+  "activity",
+  Effect.fn(function* (handlers) {
+    const log = yield* ActivityLog
+
+    return handlers.handleAll({
+      list: ({ query }) => requireManager.pipe(Effect.andThen(log.page(query))),
+      steps: ({ params }) => requireManager.pipe(Effect.andThen(log.steps(params.id)))
     })
   })
 )
@@ -350,6 +426,84 @@ export const InstagramApiHandlers = HttpApiBuilder.group(
   })
 )
 
+const onlyOwn = (own: SpecialistId | null) => (appointments: ReadonlyArray<Appointment>) =>
+  own === null ? appointments : appointments.filter((item) => item.specialistId === own)
+
+export const CalendarApiHandlers = HttpApiBuilder.group(
+  Api,
+  "calendar",
+  Effect.fn(function* (handlers) {
+    const calendar = yield* Calendar
+    const person = { bookedBy: { agentId: null, channel: null } }
+
+    /** A member who is a specialist sees only their own appointments. Everyone else sees the whole calendar. */
+    const ownSpecialist = CurrentSession.pipe(
+      Effect.flatMap(({ account }) =>
+        account.user.role !== "member"
+          ? Effect.succeed(null)
+          : calendar.specialists.pipe(
+              Effect.map((items) => items.find((item) => item.userId === account.user.id)?.id ?? null)
+            )
+      )
+    )
+
+    /** A member who is a specialist changes only their own appointments. */
+    const ownAppointment = (id: AppointmentId) =>
+      Effect.all([ownSpecialist, calendar.find(id)]).pipe(
+        Effect.flatMap(([own, appointment]) =>
+          own === null || appointment.specialistId === own ? Effect.void : Effect.fail(new AppointmentNotFound())
+        )
+      )
+
+    /** ...and books or moves only into their own calendar. */
+    const ownTarget = (specialistId: SpecialistId) =>
+      ownSpecialist.pipe(
+        Effect.flatMap((own) =>
+          own === null || specialistId === own ? Effect.void : Effect.fail(new SpecialistNotFound())
+        )
+      )
+
+    return handlers.handleAll({
+      settings: () => calendar.settings,
+      saveSettings: ({ payload }) => requireManager.pipe(Effect.andThen(calendar.saveSettings(payload))),
+      specialists: () => calendar.specialists,
+      createSpecialist: ({ payload }) => requireManager.pipe(Effect.andThen(calendar.createSpecialist(payload))),
+      updateSpecialist: ({ params, payload }) =>
+        requireManager.pipe(Effect.andThen(calendar.updateSpecialist(params.id, payload))),
+      removeSpecialist: ({ params }) => requireManager.pipe(Effect.andThen(calendar.removeSpecialist(params.id))),
+      appointments: ({ query }) =>
+        Effect.all([ownSpecialist, calendar.appointments(query)]).pipe(
+          Effect.map(([own, appointments]) => onlyOwn(own)(appointments))
+        ),
+      appointmentsFor: ({ query }) =>
+        Effect.all([ownSpecialist, calendar.appointmentsFor(query)]).pipe(
+          Effect.map(([own, appointments]) => onlyOwn(own)(appointments))
+        ),
+      slots: ({ payload }) => calendar.slots(payload),
+      book: ({ payload }) => ownTarget(payload.specialistId).pipe(Effect.andThen(calendar.book(payload, person))),
+      move: ({ params, payload }) =>
+        ownAppointment(params.id).pipe(
+          Effect.andThen(ownTarget(payload.specialistId)),
+          Effect.andThen(calendar.move(params.id, payload, person))
+        ),
+      record: ({ params, payload }) =>
+        ownAppointment(params.id).pipe(Effect.andThen(calendar.record(params.id, payload.outcome))),
+      cancel: ({ params, payload }) =>
+        ownAppointment(params.id).pipe(Effect.andThen(calendar.cancel(params.id, payload.reason))),
+      approve: ({ params }) => ownAppointment(params.id).pipe(Effect.andThen(calendar.approve(params.id))),
+      reminders: ({ params }) => ownAppointment(params.id).pipe(Effect.andThen(calendar.reminders(params.id))),
+      appointment: ({ params }) =>
+        Effect.all([ownSpecialist, calendar.find(params.id)]).pipe(
+          Effect.flatMap(([own, appointment]) =>
+            own === null || appointment.specialistId === own
+              ? Effect.succeed(appointment)
+              : Effect.fail(new AppointmentNotFound())
+          )
+        )
+    })
+  })
+)
+
 export const ApiHandlers = Layer.mergeAll(
   SystemApiHandlers,
   AuthApiHandlers,
@@ -366,12 +520,16 @@ export const ApiHandlers = Layer.mergeAll(
   ApprovalsApiHandlers,
   AssistantApiHandlers,
   ChatApiHandlers,
+  CoachingApiHandlers,
+  VoiceApiHandlers,
+  ActivityApiHandlers,
   SearchApiHandlers,
   ModelsApiHandlers,
   ProvidersApiHandlers,
   WhatsAppApiHandlers,
   TelegramApiHandlers,
-  InstagramApiHandlers
+  InstagramApiHandlers,
+  CalendarApiHandlers
 )
 
 export const ApiRoutes = HttpApiBuilder.layer(Api, {

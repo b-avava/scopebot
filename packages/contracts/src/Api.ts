@@ -1,22 +1,35 @@
 import {
   Account,
+  ActionNotFound,
   Activity,
   ActivityId,
   ActivityNotFound,
+  ActivityPage,
   ActivityPatch,
+  ActivityQuery,
   Agent,
   AgentAction,
   AgentId,
   AgentNotFound,
   AgentPaused,
+  AgentRule,
   AgentSettings,
   AgentStatus,
+  Appointment,
+  AppointmentClosed,
+  AppointmentId,
+  AppointmentNotFound,
+  AppointmentOutcome,
   ApprovalDecision,
   ApprovalId,
   ApprovalNotPending,
   ApprovalRequest,
   AuthSession,
   BusinessProfile,
+  CalendarOff,
+  CalendarSettings,
+  CancelAppointment,
+  CannotAnswerAgain,
   ChangePassword,
   ChannelSettings,
   ChatMessage,
@@ -37,13 +50,18 @@ import {
   DealId,
   DealNotFound,
   DealStageNotFound,
+  DecideSuggestion,
   Department,
   DepartmentDetails,
   DepartmentId,
   DepartmentNotFound,
+  DraftedRule,
   DraftNotFound,
+  DraftRule,
+  EditQuestion,
   EmailTaken,
   Forbidden,
+  GiveFeedback,
   HealthStatus,
   InstagramChat,
   InstagramLogin,
@@ -58,14 +76,20 @@ import {
   JoinTeam,
   LastMessage,
   LinkWhatsApp,
+  LiveAnswer,
   Login,
+  MessageFeedback,
   MessageId,
   ModelFailed,
   ModelNotConfigured,
   ModelRefused,
+  MoveAppointment,
   NewActivity,
+  NewAppointment,
   NewApproval,
   NewInvite,
+  NewRule,
+  NothingHeard,
   PinAgent,
   Pipeline,
   PipelineDetails,
@@ -78,7 +102,12 @@ import {
   ProviderPreferences,
   ReferenceNotFound,
   Register,
+  ReminderLog,
   RenameConversation,
+  RuleDecision,
+  RuleId,
+  RuleNotFound,
+  RulePatch,
   SearchHit,
   SendDraft,
   SendMessage,
@@ -91,18 +120,33 @@ import {
   ServicePreview,
   SideAnswer,
   SideQuestion,
+  Slot,
+  SlotQuery,
+  Specialist,
+  SpecialistDetails,
+  SpecialistId,
+  SpecialistNotFound,
   StageInUse,
+  SuggestionNotFound,
   TelegramChat,
   TelegramNeedsAgent,
   TelegramNotConnected,
   TelegramSendFailed,
   TelegramStatus,
   TelegramTokenInvalid,
+  TimeTaken,
+  TimeUnavailable,
   TooManyAttempts,
+  TooManyRules,
+  Transcribe,
+  Transcript,
   Unauthorized,
   User,
   UserId,
   UserNotFound,
+  VoiceFailed,
+  VoiceNotConfigured,
+  VoiceStatus,
   WhatsAppChat,
   WhatsAppNeedsAgent,
   WhatsAppNotLinked,
@@ -409,6 +453,20 @@ export class DealsApi extends HttpApiGroup.make("deals")
 
 const chatParams = { id: AgentId, conversationId: ConversationId }
 
+/** A drafted reply that books, moves or cancels is not sent when that cannot be done. */
+/** Answering the last question again fails as sending does, or when it is not the last one. */
+const answerAgainErrors = [
+  AgentNotFound,
+  ConversationNotFound,
+  AgentPaused,
+  CannotAnswerAgain,
+  ModelNotConfigured,
+  ModelFailed,
+  ModelRefused
+] as const
+
+const appointmentStepErrors = [TimeTaken, TimeUnavailable, AppointmentClosed, CalendarOff] as const
+
 export class ChatApi extends HttpApiGroup.make("chat")
   .add(
     HttpApiEndpoint.get("conversations", "/:id/conversations", {
@@ -462,9 +520,134 @@ export class ChatApi extends HttpApiGroup.make("chat")
       params: chatParams,
       success: ChatState,
       error: [AgentNotFound, ConversationNotFound]
+    }),
+    HttpApiEndpoint.get("conversationActions", "/:id/conversations/:conversationId/actions", {
+      params: chatParams,
+      success: Schema.Array(AgentAction),
+      error: [AgentNotFound, ConversationNotFound]
+    }),
+    HttpApiEndpoint.post("regenerate", "/:id/conversations/:conversationId/regenerate", {
+      params: chatParams,
+      success: SentMessage,
+      error: answerAgainErrors
+    }),
+    HttpApiEndpoint.post("edit", "/:id/conversations/:conversationId/edit", {
+      params: chatParams,
+      payload: EditQuestion,
+      success: SentMessage,
+      error: answerAgainErrors
+    }),
+    HttpApiEndpoint.get("live", "/:id/conversations/:conversationId/live", {
+      params: chatParams,
+      // Answers at once when the chat changed since that version, otherwise after a short wait (ADR 0025).
+      query: { after: Schema.FiniteFromString },
+      success: LiveAnswer,
+      error: [AgentNotFound, ConversationNotFound]
+    }),
+    HttpApiEndpoint.post("stop", "/:id/conversations/:conversationId/stop", {
+      params: chatParams,
+      error: [AgentNotFound, ConversationNotFound]
+    }),
+    HttpApiEndpoint.post("decide", "/:id/conversations/:conversationId/messages/:messageId/decide", {
+      params: { ...chatParams, messageId: MessageId },
+      payload: DecideSuggestion,
+      success: ChatMessage,
+      error: [SuggestionNotFound, ...appointmentStepErrors]
     })
   )
   .prefix("/agents")
+  .middleware(Authorization) {}
+
+const ruleParams = { id: AgentId, ruleId: RuleId }
+
+/** Feedback on answers and the employee's rules from the team (ADR 0023). */
+export class CoachingApi extends HttpApiGroup.make("coaching")
+  .add(
+    HttpApiEndpoint.put("giveFeedback", "/:id/conversations/:conversationId/messages/:messageId/feedback", {
+      params: { ...chatParams, messageId: MessageId },
+      payload: GiveFeedback,
+      success: MessageFeedback,
+      error: [AgentNotFound, ConversationNotFound, Forbidden]
+    }),
+    HttpApiEndpoint.get("feedback", "/:id/conversations/:conversationId/feedback", {
+      params: chatParams,
+      success: Schema.Array(MessageFeedback),
+      error: [AgentNotFound, ConversationNotFound]
+    }),
+    HttpApiEndpoint.get("rules", "/:id/rules", {
+      params: { id: AgentId },
+      success: Schema.Array(AgentRule),
+      error: AgentNotFound
+    }),
+    HttpApiEndpoint.post("addRule", "/:id/rules", {
+      params: { id: AgentId },
+      payload: NewRule,
+      success: AgentRule,
+      error: [AgentNotFound, TooManyRules, Forbidden]
+    }),
+    HttpApiEndpoint.post("draftRule", "/:id/rules/draft", {
+      params: { id: AgentId },
+      payload: DraftRule,
+      success: DraftedRule,
+      error: [AgentNotFound, ModelNotConfigured, ModelFailed, ModelRefused]
+    }),
+    HttpApiEndpoint.patch("changeRule", "/:id/rules/:ruleId", {
+      params: ruleParams,
+      payload: RulePatch,
+      success: AgentRule,
+      error: [RuleNotFound, TooManyRules, Forbidden]
+    }),
+    HttpApiEndpoint.post("decideRule", "/:id/rules/:ruleId/decide", {
+      params: ruleParams,
+      payload: RuleDecision,
+      success: AgentRule,
+      error: [RuleNotFound, TooManyRules, Forbidden]
+    }),
+    HttpApiEndpoint.delete("removeRule", "/:id/rules/:ruleId", {
+      params: ruleParams,
+      error: [RuleNotFound, Forbidden]
+    })
+  )
+  .prefix("/agents")
+  .middleware(Authorization) {}
+
+/** Speaking instead of typing (ADR 0026). Anyone may speak; owners and admins set the key. */
+export class VoiceApi extends HttpApiGroup.make("voice")
+  .add(
+    HttpApiEndpoint.get("status", "/status", {
+      success: VoiceStatus
+    }),
+    HttpApiEndpoint.put("saveKey", "/key", {
+      payload: ProviderKey,
+      error: Forbidden
+    }),
+    HttpApiEndpoint.delete("removeKey", "/key", {
+      error: Forbidden
+    }),
+    HttpApiEndpoint.post("transcribe", "/transcribe", {
+      payload: Transcribe,
+      success: Transcript,
+      error: [VoiceNotConfigured, VoiceFailed, NothingHeard]
+    })
+  )
+  .prefix("/voice")
+  .middleware(Authorization) {}
+
+/** What AI employees did. For owners and admins, who supervise them (ADR 0022). */
+export class ActivityApi extends HttpApiGroup.make("activity")
+  .add(
+    HttpApiEndpoint.get("list", "/", {
+      query: ActivityQuery.fields,
+      success: ActivityPage,
+      error: Forbidden
+    }),
+    HttpApiEndpoint.get("steps", "/:id/steps", {
+      params: { id: Schema.String },
+      success: Schema.Array(AgentAction),
+      error: [ActionNotFound, Forbidden]
+    })
+  )
+  .prefix("/activity")
   .middleware(Authorization) {}
 
 export class SearchApi extends HttpApiGroup.make("search")
@@ -554,7 +737,7 @@ export class WhatsAppApi extends HttpApiGroup.make("whatsapp")
       params: { id: MessageId },
       payload: SendDraft,
       success: ChatMessage,
-      error: [DraftNotFound, WhatsAppNotLinked, WhatsAppSendFailed]
+      error: [DraftNotFound, WhatsAppNotLinked, WhatsAppSendFailed, ...appointmentStepErrors]
     }),
     HttpApiEndpoint.post("discardDraft", "/drafts/:id/discard", {
       params: { id: MessageId },
@@ -607,7 +790,7 @@ export class TelegramApi extends HttpApiGroup.make("telegram")
       params: { id: MessageId },
       payload: SendDraft,
       success: ChatMessage,
-      error: [DraftNotFound, TelegramNotConnected, TelegramSendFailed]
+      error: [DraftNotFound, TelegramNotConnected, TelegramSendFailed, ...appointmentStepErrors]
     }),
     HttpApiEndpoint.post("discardDraft", "/drafts/:id/discard", {
       params: { id: MessageId },
@@ -662,7 +845,13 @@ export class InstagramApi extends HttpApiGroup.make("instagram")
       params: { id: MessageId },
       payload: SendDraft,
       success: ChatMessage,
-      error: [DraftNotFound, InstagramNotConnected, InstagramWindowClosed, InstagramSendFailed]
+      error: [
+        DraftNotFound,
+        InstagramNotConnected,
+        InstagramWindowClosed,
+        InstagramSendFailed,
+        ...appointmentStepErrors
+      ]
     }),
     HttpApiEndpoint.post("discardDraft", "/drafts/:id/discard", {
       params: { id: MessageId },
@@ -675,6 +864,101 @@ export class InstagramApi extends HttpApiGroup.make("instagram")
     })
   )
   .prefix("/instagram")
+  .middleware(Authorization) {}
+
+const appointmentParams = { id: AppointmentId }
+const bookingErrors = [
+  CalendarOff,
+  SpecialistNotFound,
+  ContactNotFound,
+  DealNotFound,
+  ReferenceNotFound,
+  TimeTaken,
+  TimeUnavailable
+] as const
+
+export class CalendarApi extends HttpApiGroup.make("calendar")
+  .add(
+    HttpApiEndpoint.get("settings", "/settings", {
+      success: CalendarSettings
+    }),
+    HttpApiEndpoint.put("saveSettings", "/settings", {
+      payload: CalendarSettings,
+      success: CalendarSettings,
+      error: [TimeUnavailable, DealStageNotFound, AgentNotFound, Forbidden]
+    }),
+    HttpApiEndpoint.get("specialists", "/specialists", {
+      success: Schema.Array(Specialist)
+    }),
+    HttpApiEndpoint.post("createSpecialist", "/specialists", {
+      payload: SpecialistDetails,
+      success: Specialist,
+      error: [ReferenceNotFound, Forbidden]
+    }),
+    HttpApiEndpoint.patch("updateSpecialist", "/specialists/:id", {
+      params: { id: SpecialistId },
+      payload: SpecialistDetails,
+      success: Specialist,
+      error: [SpecialistNotFound, ReferenceNotFound, Forbidden]
+    }),
+    HttpApiEndpoint.delete("removeSpecialist", "/specialists/:id", {
+      params: { id: SpecialistId },
+      error: [SpecialistNotFound, Forbidden]
+    }),
+    HttpApiEndpoint.get("appointments", "/appointments", {
+      query: { from: Schema.String, to: Schema.String },
+      success: Schema.Array(Appointment),
+      error: CalendarOff
+    }),
+    HttpApiEndpoint.get("appointmentsFor", "/appointments/linked", {
+      query: { contactId: Schema.optionalKey(ContactId), dealId: Schema.optionalKey(DealId) },
+      success: Schema.Array(Appointment)
+    }),
+    HttpApiEndpoint.post("slots", "/slots", {
+      payload: SlotQuery,
+      success: Schema.Array(Slot),
+      error: CalendarOff
+    }),
+    HttpApiEndpoint.post("book", "/appointments", {
+      payload: NewAppointment,
+      success: Appointment,
+      error: bookingErrors
+    }),
+    HttpApiEndpoint.post("move", "/appointments/:id/move", {
+      params: appointmentParams,
+      payload: MoveAppointment,
+      success: Appointment,
+      error: [...bookingErrors, AppointmentNotFound, AppointmentClosed]
+    }),
+    HttpApiEndpoint.post("record", "/appointments/:id/outcome", {
+      params: appointmentParams,
+      payload: Schema.Struct({ outcome: AppointmentOutcome }),
+      success: Appointment,
+      error: [AppointmentNotFound, AppointmentClosed]
+    }),
+    HttpApiEndpoint.post("cancel", "/appointments/:id/cancel", {
+      params: appointmentParams,
+      payload: CancelAppointment,
+      success: Appointment,
+      error: [AppointmentNotFound, AppointmentClosed]
+    }),
+    HttpApiEndpoint.get("appointment", "/appointments/:id", {
+      params: appointmentParams,
+      success: Appointment,
+      error: AppointmentNotFound
+    }),
+    HttpApiEndpoint.get("reminders", "/appointments/:id/reminders", {
+      params: appointmentParams,
+      success: Schema.Array(ReminderLog),
+      error: AppointmentNotFound
+    }),
+    HttpApiEndpoint.post("approve", "/appointments/:id/approve", {
+      params: appointmentParams,
+      success: Appointment,
+      error: [AppointmentNotFound, AppointmentClosed, TimeTaken]
+    })
+  )
+  .prefix("/calendar")
   .middleware(Authorization) {}
 
 export class Api extends HttpApi.make("scope-bot")
@@ -693,10 +977,14 @@ export class Api extends HttpApi.make("scope-bot")
   .add(ApprovalsApi)
   .add(AssistantApi)
   .add(ChatApi)
+  .add(CoachingApi)
+  .add(VoiceApi)
+  .add(ActivityApi)
   .add(SearchApi)
   .add(ModelsApi)
   .add(ProvidersApi)
   .add(WhatsAppApi)
   .add(TelegramApi)
   .add(InstagramApi)
+  .add(CalendarApi)
   .annotateMerge(OpenApi.annotations({ title: "Scope Bot API" })) {}

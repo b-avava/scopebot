@@ -1,7 +1,20 @@
 import { Store } from "@scope-bot/db"
-import { ReferenceNotFound, type Service, type ServiceDetails, ServiceId, ServiceNotFound } from "@scope-bot/domain"
+import {
+  type Agent,
+  ReferenceNotFound,
+  type Service,
+  type ServiceDetails,
+  ServiceId,
+  ServiceNotFound
+} from "@scope-bot/domain"
 import { Context, Effect, Layer, Option } from "effect"
 import { nowIso } from "./Agents.ts"
+
+/** What this employee may offer: active services, and only those it may sell. */
+export const servicesFor = (agent: Agent, services: ReadonlyArray<Service>) =>
+  services.filter(
+    (service) => service.active && (service.sellerIds.length === 0 || service.sellerIds.includes(agent.id))
+  )
 
 /** What the business sells. Employees quote from this list and nothing else. */
 export class Services extends Context.Service<

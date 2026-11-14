@@ -3,6 +3,7 @@ import { ArrowUp, Clock, Search, User } from "lucide-react"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import type { BridgeResult } from "../../preload/bridge.ts"
 import { EmployeeAvatar } from "./Avatar.tsx"
+import { DraftAppointment, stepVerb } from "./DraftAppointment.tsx"
 import { errorMessage } from "./hooks.ts"
 import { useChannelMessages } from "./useWhatsApp.ts"
 
@@ -223,16 +224,19 @@ const Bubble = ({ message, agentName }: { readonly message: ChatMessage; readonl
 const Draft = ({
   message,
   agent,
+  contactId,
   onSend,
   onDiscard
 }: {
   readonly message: ChatMessage
   readonly agent: Agent | undefined
+  readonly contactId: string | null
   readonly onSend: (text: string | null) => Promise<void>
   readonly onDiscard: () => Promise<void>
 }) => {
   const [editing, setEditing] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const verb = stepVerb(message.appointment)
   const run = async (action: () => Promise<void>) => {
     setBusy(true)
     await action()
@@ -244,7 +248,7 @@ const Draft = ({
       <div className="flex items-center gap-2">
         {agent !== undefined && <EmployeeAvatar agent={agent} size={20} />}
         <span className="flex-1 text-[13px] font-semibold text-amber-600 dark:text-amber-400">
-          {agent?.name ?? "The employee"} wants to reply
+          {agent?.name ?? "The employee"} wants to {verb === null ? "" : `${verb} and `}reply
         </span>
         <span className="text-xs text-muted-foreground">Not sent yet</span>
       </div>
@@ -265,6 +269,7 @@ const Draft = ({
           className="w-full resize-none rounded-control border bg-field px-3 py-2.5 text-sm leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       )}
+      {message.appointment !== undefined && <DraftAppointment step={message.appointment} contactId={contactId} />}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -272,7 +277,7 @@ const Draft = ({
           onClick={() => void run(() => onSend(editing))}
           className="h-8 rounded-control-sm bg-primary px-3.5 text-[13px] font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
-          Send
+          {verb === null ? "Send" : `Send and ${verb}`}
         </button>
         {editing === null && (
           <button
@@ -404,6 +409,7 @@ export const Conversation = ({
             key={message.id}
             message={message}
             agent={agent}
+            contactId={chat.contactId}
             onSend={async (text) => {
               await after(await api.sendDraft(message.id, text))
             }}

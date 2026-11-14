@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest"
-import { CurrentBusiness, Store, TelegramStorage } from "@scope-bot/db"
+import { CalendarStorage, CurrentBusiness, Store, TelegramStorage } from "@scope-bot/db"
 import { BusinessId, type ConversationId } from "@scope-bot/domain"
 import { makeFakeTelegram } from "@scope-bot/integrations/testing"
 import { Effect, Layer } from "effect"
 import { AgentChat } from "../src/AgentChat.ts"
 import { Agents } from "../src/Agents.ts"
+import { CalendarTools } from "../src/CalendarTools.ts"
 import { ChatModel } from "../src/ChatModel.ts"
 import { Contacts } from "../src/Contacts.ts"
 import { ModelProviders } from "../src/ModelProviders.ts"
@@ -30,10 +31,12 @@ const setup = () => {
   )
   const layer = Telegram.layer.pipe(
     Layer.provideMerge(AgentChat.layer),
+    Layer.provideMerge(CalendarTools.layerWithCalendar),
     Layer.provideMerge(Agents.layer),
     Layer.provideMerge(Contacts.layer),
     Layer.provideMerge(ModelProviders.layerApiOnly),
     Layer.provide(model),
+    Layer.provideMerge(CalendarStorage.layerMemory),
     Layer.provideMerge(Store.layerMemory),
     Layer.provideMerge(TelegramStorage.layerMemory),
     Layer.provide(telegram.layer)

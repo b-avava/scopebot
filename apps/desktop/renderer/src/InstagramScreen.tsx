@@ -60,10 +60,13 @@ const Title = ({
 const Inbox = ({
   agents,
   waitingOnly,
+  chatId,
   onChanged
 }: {
   readonly agents: ReadonlyArray<Agent>
   readonly waitingOnly: boolean
+  /** The chat to open first, such as one picked in the activity log. */
+  readonly chatId: string | null
   readonly onChanged: () => void
 }) => {
   const { chats, reload } = useInstagramChats(true)
@@ -74,7 +77,7 @@ const Inbox = ({
     answerUntil: answerUntil(lastCustomerAt)
   }))
   const shown = waitingOnly ? rows.filter((chat) => chat.drafts > 0) : rows
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(chatId)
   const selected = shown.find((chat) => chat.id === selectedId) ?? shown[0]
 
   return (
@@ -106,7 +109,13 @@ const Inbox = ({
   )
 }
 
-export const InstagramScreen = ({ agents }: { readonly agents: ReadonlyArray<Agent> }) => {
+export const InstagramScreen = ({
+  agents,
+  chatId = null
+}: {
+  readonly agents: ReadonlyArray<Agent>
+  readonly chatId?: string | null
+}) => {
   const { status, error, refresh, saveSettings, check, disconnect, login } = useInstagram()
   const [tab, setTab] = useState<Section>("chats")
   const connected = status?.account != null
@@ -141,6 +150,7 @@ export const InstagramScreen = ({ agents }: { readonly agents: ReadonlyArray<Age
         <Inbox
           agents={agents}
           waitingOnly={tab === "waiting"}
+          chatId={chatId}
           onChanged={() => {
             void reload()
             void refresh()

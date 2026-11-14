@@ -1,7 +1,7 @@
 # 0008. Several chats per employee with one memory
 
 Date: 2026-11-07
-Status: Accepted
+Status: Accepted, memory narrowed to one person's tabs by ADR 0021
 
 ## Context
 

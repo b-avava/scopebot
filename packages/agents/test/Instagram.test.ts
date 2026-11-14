@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest"
-import { CurrentBusiness, InstagramStorage, Store } from "@scope-bot/db"
+import { CalendarStorage, CurrentBusiness, InstagramStorage, Store } from "@scope-bot/db"
 import { BusinessId } from "@scope-bot/domain"
 import { makeFakeInstagram } from "@scope-bot/integrations/testing"
 import { Effect, Layer, Option } from "effect"
 import { AgentChat } from "../src/AgentChat.ts"
 import { Agents } from "../src/Agents.ts"
+import { CalendarTools } from "../src/CalendarTools.ts"
 import { ChatModel } from "../src/ChatModel.ts"
 import { Contacts } from "../src/Contacts.ts"
 import { Instagram } from "../src/Instagram.ts"
@@ -22,10 +23,12 @@ const setup = () => {
   )
   const layer = Instagram.layer.pipe(
     Layer.provideMerge(AgentChat.layer),
+    Layer.provideMerge(CalendarTools.layerWithCalendar),
     Layer.provideMerge(Agents.layer),
     Layer.provideMerge(Contacts.layer),
     Layer.provideMerge(ModelProviders.layerApiOnly),
     Layer.provide(model),
+    Layer.provideMerge(CalendarStorage.layerMemory),
     Layer.provideMerge(Store.layerMemory),
     Layer.provideMerge(InstagramStorage.layerMemory),
     Layer.provide(instagram.layer)

@@ -31,7 +31,7 @@ import {
 } from "@scope-bot/integrations"
 import { Context, Effect, FiberSet, Layer, Option, Redacted } from "effect"
 import { Agents, nowIso } from "./Agents.ts"
-import { makeInbox, type SendText } from "./ChannelInbox.ts"
+import { type AppointmentStepError, makeInbox, type SendText } from "./ChannelInbox.ts"
 
 const HOUR_MS = 60 * 60 * 1000
 const LOGIN_MS = 15 * 60 * 1000
@@ -68,7 +68,16 @@ export class Instagram extends Context.Service<
     readonly chats: Effect.Effect<ReadonlyArray<InstagramChat>>
     messages(chatId: ConversationId): Effect.Effect<ReadonlyArray<ChatMessage>, ConversationNotFound>
     send(chatId: ConversationId, text: string): Effect.Effect<ChatMessage, ConversationNotFound | SendError>
-    sendDraft(id: MessageId, text?: string): Effect.Effect<ChatMessage, DraftNotFound | SendError>
+    /** The employee writes first, like a reminder, only within 24 hours of the customer's last message. */
+    notify(
+      chatId: ConversationId,
+      text: string,
+      summary: string
+    ): Effect.Effect<ChatMessage, ConversationNotFound | SendError>
+    sendDraft(
+      id: MessageId,
+      text?: string
+    ): Effect.Effect<ChatMessage, DraftNotFound | SendError | AppointmentStepError>
     discardDraft(id: MessageId): Effect.Effect<ChatMessage, DraftNotFound>
     resume(chatId: ConversationId): Effect.Effect<void, ConversationNotFound>
   }
@@ -308,6 +317,11 @@ export class Instagram extends Context.Service<
           yield* inbox.findChat(chatId)
           yield* requireConnected
           return yield* inbox.write(chatId, text, sendText(true))
+        }),
+        notify: Effect.fn("Instagram.notify")(function* (chatId, text, summary) {
+          yield* inbox.findChat(chatId)
+          yield* requireConnected
+          return yield* inbox.notify(chatId, text, summary, sendText(false))
         }),
         sendDraft: Effect.fn("Instagram.sendDraft")(function* (id, text) {
           yield* requireConnected

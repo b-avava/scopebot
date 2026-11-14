@@ -1,4 +1,14 @@
-import { Building2, ChartColumn, Check, CircleUser, Package, ScrollText, SquareKanban, Users } from "lucide-react"
+import {
+  Building2,
+  CalendarDays,
+  ChartColumn,
+  Check,
+  CircleUser,
+  Package,
+  ScrollText,
+  SquareKanban,
+  Users
+} from "lucide-react"
 import type { ComponentType } from "react"
 import { InstagramLogo, TelegramLogo, WhatsAppLogo } from "./ChannelLogos.tsx"
 
@@ -35,9 +45,18 @@ const RailButton = ({ label, icon: Icon, active = false, onSelect, badge = 0 }: 
 
 interface AppRailProps {
   readonly hasTeam: boolean
+  /** Owners and admins supervise the employees, so only they get the activity log. */
+  readonly canSupervise: boolean
+  readonly activityOpen: boolean
+  readonly onOpenActivity: () => void
   readonly businessOpen: boolean
   readonly contactsOpen: boolean
   readonly dealsOpen: boolean
+  /** The calendar shows only when the business turned it on. */
+  readonly calendarEnabled: boolean
+  readonly calendarOpen: boolean
+  /** Bookings by AI employees that wait for a person. */
+  readonly calendarWaiting: number
   readonly servicesOpen: boolean
   readonly whatsappOpen: boolean
   /** Replies on WhatsApp that wait for a person. */
@@ -51,6 +70,7 @@ interface AppRailProps {
   readonly onOpenBusiness: () => void
   readonly onOpenContacts: () => void
   readonly onOpenDeals: () => void
+  readonly onOpenCalendar: () => void
   readonly onOpenServices: () => void
   readonly onOpenWhatsApp: () => void
   readonly onOpenTelegram: () => void
@@ -60,9 +80,15 @@ interface AppRailProps {
 
 export const AppRail = ({
   hasTeam,
+  canSupervise,
+  activityOpen,
+  onOpenActivity,
   businessOpen,
   contactsOpen,
   dealsOpen,
+  calendarEnabled,
+  calendarOpen,
+  calendarWaiting,
   servicesOpen,
   whatsappOpen,
   whatsappDrafts,
@@ -75,6 +101,7 @@ export const AppRail = ({
   onOpenBusiness,
   onOpenContacts,
   onOpenDeals,
+  onOpenCalendar,
   onOpenServices,
   onOpenWhatsApp,
   onOpenTelegram,
@@ -85,6 +112,15 @@ export const AppRail = ({
     <RailButton label="Business" icon={Building2} active={businessOpen} onSelect={onOpenBusiness} />
     <RailButton label="Contacts" icon={Users} active={contactsOpen} onSelect={onOpenContacts} />
     <RailButton label="Deals" icon={SquareKanban} active={dealsOpen} onSelect={onOpenDeals} />
+    {calendarEnabled && (
+      <RailButton
+        label="Calendar"
+        icon={CalendarDays}
+        active={calendarOpen}
+        onSelect={onOpenCalendar}
+        badge={calendarWaiting}
+      />
+    )}
     <RailButton label="Services" icon={Package} active={servicesOpen} onSelect={onOpenServices} />
     <RailButton
       label="WhatsApp"
@@ -108,7 +144,9 @@ export const AppRail = ({
       badge={instagramDrafts}
     />
     {hasTeam && <RailButton label="Approvals" icon={Check} badge={pendingApprovals} />}
-    {hasTeam && <RailButton label="Activity log" icon={ScrollText} />}
+    {hasTeam && canSupervise && (
+      <RailButton label="Activity log" icon={ScrollText} active={activityOpen} onSelect={onOpenActivity} />
+    )}
     {hasTeam && <RailButton label="Dashboard" icon={ChartColumn} />}
     <div className="mt-auto">
       <RailButton label="Account" icon={CircleUser} active={accountOpen} onSelect={onOpenAccount} />

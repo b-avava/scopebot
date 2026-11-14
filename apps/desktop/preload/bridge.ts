@@ -1,14 +1,20 @@
 import type {
   Account,
   Activity,
+  ActivityPage,
   ActivityPatch,
+  ActivityQuery,
   Agent,
   AgentAction,
+  AgentRule,
   AgentSettings,
   AgentStatus,
+  Appointment,
+  AppointmentOutcome,
   ApprovalDecision,
   ApprovalRequest,
   BusinessProfile,
+  CalendarSettings,
   ChangePassword,
   ChannelSettings,
   ChatImage,
@@ -23,14 +29,22 @@ import type {
   DealDetails,
   Department,
   DepartmentDetails,
+  DraftedRule,
+  DraftRule,
+  GiveFeedback,
   InstagramChat,
   InstagramStatus,
   Invite,
   JoinTeam,
   LastMessage,
+  LiveAnswer,
   Login,
+  MessageFeedback,
+  MoveAppointment,
   NewActivity,
+  NewAppointment,
   NewInvite,
+  NewRule,
   Pipeline,
   PipelineDetails,
   ProviderCatalog,
@@ -38,15 +52,24 @@ import type {
   ProviderKey,
   ProviderPreferences,
   Register,
+  ReminderLog,
+  RulePatch,
   SearchHit,
   SentMessage,
   Service,
   ServiceDetails,
   ServicePreview,
   SideAnswer,
+  Slot,
+  SlotQuery,
+  Specialist,
+  SpecialistDetails,
   TelegramChat,
   TelegramStatus,
+  Transcribe,
+  Transcript,
   User,
+  VoiceStatus,
   WhatsAppChat,
   WhatsAppSettings,
   WhatsAppStatus
@@ -55,6 +78,12 @@ import type {
 export const Channels = {
   serverStatus: "server:status",
   theme: "theme:set",
+  openLink: "link:open",
+  openMicrophoneSettings: "voice:microphone-settings",
+  voiceStatus: "voice:status",
+  saveVoiceKey: "voice:save-key",
+  removeVoiceKey: "voice:remove-key",
+  transcribe: "voice:transcribe",
   getAccount: "account:get",
   register: "account:register",
   login: "account:login",
@@ -107,9 +136,23 @@ export const Channels = {
   listMessages: "chat:messages",
   sendMessage: "chat:send",
   askAgent: "chat:ask",
+  decideSuggestion: "chat:decide",
   listActions: "chat:actions",
   getChatState: "chat:state",
   resumeAgent: "chat:resume",
+  listChatActions: "chat:conversation-actions",
+  watchAnswer: "chat:live",
+  stopAnswer: "chat:stop",
+  answerAgain: "chat:regenerate",
+  editQuestion: "chat:edit",
+  giveFeedback: "coaching:feedback",
+  listFeedback: "coaching:feedback-list",
+  listRules: "coaching:rules",
+  addRule: "coaching:add-rule",
+  draftRule: "coaching:draft-rule",
+  changeRule: "coaching:change-rule",
+  decideRule: "coaching:decide-rule",
+  removeRule: "coaching:remove-rule",
   listModels: "models:list",
   getPreferences: "providers:preferences",
   savePreferences: "providers:save-preferences",
@@ -147,7 +190,25 @@ export const Channels = {
   sendInstagram: "instagram:send",
   sendInstagramDraft: "instagram:send-draft",
   discardInstagramDraft: "instagram:discard-draft",
-  resumeInstagramChat: "instagram:resume"
+  resumeInstagramChat: "instagram:resume",
+  getCalendarSettings: "calendar:settings",
+  saveCalendarSettings: "calendar:save-settings",
+  listSpecialists: "calendar:specialists",
+  createSpecialist: "calendar:create-specialist",
+  updateSpecialist: "calendar:update-specialist",
+  removeSpecialist: "calendar:remove-specialist",
+  listAppointments: "calendar:appointments",
+  listLinkedAppointments: "calendar:linked",
+  findSlots: "calendar:slots",
+  bookAppointment: "calendar:book",
+  moveAppointment: "calendar:move",
+  recordAppointment: "calendar:record",
+  cancelAppointment: "calendar:cancel",
+  approveAppointment: "calendar:approve",
+  listAppointmentReminders: "calendar:reminders",
+  getAppointment: "calendar:appointment",
+  listActivity: "activity:list",
+  listActionSteps: "activity:steps"
 } as const
 
 export interface ServerStatus {
@@ -190,6 +251,16 @@ export type BridgeError =
   | "instagram-needs-agent"
   | "instagram-window-closed"
   | "instagram-send-failed"
+  | "calendar-off"
+  | "time-taken"
+  | "time-unavailable"
+  | "appointment-closed"
+  | "cannot-answer-again"
+  | "too-many-rules"
+  | "voice-not-configured"
+  | "voice-failed"
+  | "voice-key-rejected"
+  | "nothing-heard"
 
 /** IPC cannot carry typed errors, so failures travel as plain values. */
 export type BridgeResult<A> =
@@ -200,6 +271,15 @@ export type BridgeResult<A> =
 export interface ScopeBotBridge {
   getServerStatus(): Promise<ServerStatus>
   setTheme(theme: Theme): Promise<void>
+  /** Asks the person, then opens a web or mail link in their browser. Nothing else opens. */
+  openLink(url: string): Promise<void>
+  /** The system's microphone privacy settings, when the app may not use it. */
+  openMicrophoneSettings(): Promise<void>
+  voiceStatus(): Promise<BridgeResult<VoiceStatus>>
+  saveVoiceKey(key: string): Promise<BridgeResult<void>>
+  removeVoiceKey(): Promise<BridgeResult<void>>
+  /** Turns a recording into text, for the composer. */
+  transcribe(input: Transcribe): Promise<BridgeResult<Transcript>>
   /** Empty when nobody is signed in. The token itself never reaches this side. */
   getAccount(): Promise<BridgeResult<Account | null>>
   register(input: Register): Promise<BridgeResult<Account>>
@@ -258,9 +338,41 @@ export interface ScopeBotBridge {
     images: ReadonlyArray<ChatImage>
   ): Promise<BridgeResult<SentMessage>>
   askAgent(id: string, conversationId: string, text: string): Promise<BridgeResult<SideAnswer>>
+  /** Does or leaves what an employee suggested in a chat with the team. */
+  decideSuggestion(
+    id: string,
+    conversationId: string,
+    messageId: string,
+    decision: "do" | "leave"
+  ): Promise<BridgeResult<ChatMessage>>
   listActions(id: string): Promise<BridgeResult<ReadonlyArray<AgentAction>>>
   getChatState(id: string, conversationId: string): Promise<BridgeResult<ChatState>>
   resumeAgent(id: string, conversationId: string): Promise<BridgeResult<ChatState>>
+  /** Everything the employee did in one chat, for the steps under its answers. */
+  listChatActions(id: string, conversationId: string): Promise<BridgeResult<ReadonlyArray<AgentAction>>>
+  /** The answer being written in a chat, once it changed since `after` or after a short wait. */
+  watchAnswer(id: string, conversationId: string, after: number): Promise<BridgeResult<LiveAnswer>>
+  stopAnswer(id: string, conversationId: string): Promise<BridgeResult<void>>
+  /** Answers the last question again, or for the first time after a failure. */
+  answerAgain(id: string, conversationId: string): Promise<BridgeResult<SentMessage>>
+  /** Asks the last question again in other words. */
+  editQuestion(id: string, conversationId: string, text: string): Promise<BridgeResult<SentMessage>>
+  giveFeedback(
+    id: string,
+    conversationId: string,
+    messageId: string,
+    input: GiveFeedback
+  ): Promise<BridgeResult<MessageFeedback>>
+  /** The person's own feedback in a chat. */
+  listFeedback(id: string, conversationId: string): Promise<BridgeResult<ReadonlyArray<MessageFeedback>>>
+  listRules(id: string): Promise<BridgeResult<ReadonlyArray<AgentRule>>>
+  /** Saved at once for owners and admins, suggested for members. */
+  addRule(id: string, input: NewRule): Promise<BridgeResult<AgentRule>>
+  /** Turns a note on an answer into a rule to check before saving. */
+  draftRule(id: string, input: DraftRule): Promise<BridgeResult<DraftedRule>>
+  changeRule(id: string, ruleId: string, patch: RulePatch): Promise<BridgeResult<AgentRule>>
+  decideRule(id: string, ruleId: string, accept: boolean): Promise<BridgeResult<AgentRule>>
+  removeRule(id: string, ruleId: string): Promise<BridgeResult<void>>
   listModels(): Promise<BridgeResult<ReadonlyArray<ProviderCatalog>>>
   getPreferences(): Promise<BridgeResult<ProviderPreferences>>
   savePreferences(preferences: ProviderPreferences): Promise<BridgeResult<ProviderPreferences>>
@@ -304,4 +416,29 @@ export interface ScopeBotBridge {
   sendInstagramDraft(id: string, text: string | null): Promise<BridgeResult<ChatMessage>>
   discardInstagramDraft(id: string): Promise<BridgeResult<ChatMessage>>
   resumeInstagramChat(chatId: string): Promise<BridgeResult<void>>
+  getCalendarSettings(): Promise<BridgeResult<CalendarSettings>>
+  saveCalendarSettings(settings: CalendarSettings): Promise<BridgeResult<CalendarSettings>>
+  listSpecialists(): Promise<BridgeResult<ReadonlyArray<Specialist>>>
+  createSpecialist(details: SpecialistDetails): Promise<BridgeResult<Specialist>>
+  updateSpecialist(id: string, details: SpecialistDetails): Promise<BridgeResult<Specialist>>
+  removeSpecialist(id: string): Promise<BridgeResult<void>>
+  /** Appointments that overlap the time between `from` and `to`, ISO. */
+  listAppointments(from: string, to: string): Promise<BridgeResult<ReadonlyArray<Appointment>>>
+  listLinkedAppointments(links: {
+    readonly contactId?: string
+    readonly dealId?: string
+  }): Promise<BridgeResult<ReadonlyArray<Appointment>>>
+  findSlots(query: SlotQuery): Promise<BridgeResult<ReadonlyArray<Slot>>>
+  bookAppointment(input: NewAppointment): Promise<BridgeResult<Appointment>>
+  moveAppointment(id: string, to: MoveAppointment): Promise<BridgeResult<Appointment>>
+  recordAppointment(id: string, outcome: AppointmentOutcome): Promise<BridgeResult<Appointment>>
+  cancelAppointment(id: string, reason: string): Promise<BridgeResult<Appointment>>
+  approveAppointment(id: string): Promise<BridgeResult<Appointment>>
+  /** What happened to the reminders of an appointment. */
+  listAppointmentReminders(id: string): Promise<BridgeResult<ReadonlyArray<ReminderLog>>>
+  getAppointment(id: string): Promise<BridgeResult<Appointment>>
+  /** What AI employees did, for owners and admins. */
+  listActivity(query: ActivityQuery): Promise<BridgeResult<ActivityPage>>
+  /** Everything done in reply to the same message as this action. */
+  listActionSteps(id: string): Promise<BridgeResult<ReadonlyArray<AgentAction>>>
 }

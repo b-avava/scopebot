@@ -1,9 +1,18 @@
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron"
 import { Channels, type Theme } from "../preload/bridge.ts"
 import { ServerConnection } from "./ServerConnection.ts"
 import { StoredSessionToken } from "./StoredSessionToken.ts"
+
+/** Where each system lets a person allow the microphone. */
+const MICROPHONE_SETTINGS: Partial<Record<NodeJS.Platform, string>> = {
+  win32: "ms-settings:privacy-microphone",
+  darwin: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+}
+
+/** What a link from an answer may open. */
+const LINK_PROTOCOLS = ["https:", "http:", "mailto:"]
 
 const TITLE_BAR_HEIGHT = 26
 
@@ -137,7 +146,45 @@ const main = Effect.gen(function* () {
   ipcMain.handle(Channels.askAgent, (_, id: unknown, conversationId: unknown, text: unknown) =>
     Effect.runPromise(server.askAgent(id, conversationId, text))
   )
+  ipcMain.handle(
+    Channels.decideSuggestion,
+    (_, id: unknown, conversationId: unknown, messageId: unknown, decision: unknown) =>
+      Effect.runPromise(server.decideSuggestion(id, conversationId, messageId, decision))
+  )
   ipcMain.handle(Channels.listActions, (_, id: unknown) => Effect.runPromise(server.listActions(id)))
+  ipcMain.handle(Channels.listChatActions, (_, id: unknown, conversationId: unknown) =>
+    Effect.runPromise(server.listChatActions(id, conversationId))
+  )
+  ipcMain.handle(Channels.watchAnswer, (_, id: unknown, conversationId: unknown, after: unknown) =>
+    Effect.runPromise(server.watchAnswer(id, conversationId, after))
+  )
+  ipcMain.handle(Channels.stopAnswer, (_, id: unknown, conversationId: unknown) =>
+    Effect.runPromise(server.stopAnswer(id, conversationId))
+  )
+  ipcMain.handle(Channels.answerAgain, (_, id: unknown, conversationId: unknown) =>
+    Effect.runPromise(server.answerAgain(id, conversationId))
+  )
+  ipcMain.handle(Channels.editQuestion, (_, id: unknown, conversationId: unknown, text: unknown) =>
+    Effect.runPromise(server.editQuestion(id, conversationId, text))
+  )
+  ipcMain.handle(Channels.giveFeedback, (_, id: unknown, conversationId: unknown, messageId: unknown, input: unknown) =>
+    Effect.runPromise(server.giveFeedback(id, conversationId, messageId, input))
+  )
+  ipcMain.handle(Channels.listFeedback, (_, id: unknown, conversationId: unknown) =>
+    Effect.runPromise(server.listFeedback(id, conversationId))
+  )
+  ipcMain.handle(Channels.listRules, (_, id: unknown) => Effect.runPromise(server.listRules(id)))
+  ipcMain.handle(Channels.addRule, (_, id: unknown, input: unknown) => Effect.runPromise(server.addRule(id, input)))
+  ipcMain.handle(Channels.draftRule, (_, id: unknown, input: unknown) => Effect.runPromise(server.draftRule(id, input)))
+  ipcMain.handle(Channels.changeRule, (_, id: unknown, ruleId: unknown, patch: unknown) =>
+    Effect.runPromise(server.changeRule(id, ruleId, patch))
+  )
+  ipcMain.handle(Channels.decideRule, (_, id: unknown, ruleId: unknown, accept: unknown) =>
+    Effect.runPromise(server.decideRule(id, ruleId, accept))
+  )
+  ipcMain.handle(Channels.removeRule, (_, id: unknown, ruleId: unknown) =>
+    Effect.runPromise(server.removeRule(id, ruleId))
+  )
   ipcMain.handle(Channels.listModels, () => Effect.runPromise(server.listModels))
   ipcMain.handle(Channels.getPreferences, () => Effect.runPromise(server.getPreferences))
   ipcMain.handle(Channels.savePreferences, (_, preferences: unknown) =>
@@ -219,6 +266,71 @@ const main = Effect.gen(function* () {
   ipcMain.handle(Channels.resumeInstagramChat, (_, chatId: unknown) =>
     Effect.runPromise(server.resumeInstagramChat(chatId))
   )
+  ipcMain.handle(Channels.getCalendarSettings, () => Effect.runPromise(server.getCalendarSettings))
+  ipcMain.handle(Channels.saveCalendarSettings, (_, settings: unknown) =>
+    Effect.runPromise(server.saveCalendarSettings(settings))
+  )
+  ipcMain.handle(Channels.listSpecialists, () => Effect.runPromise(server.listSpecialists))
+  ipcMain.handle(Channels.createSpecialist, (_, details: unknown) =>
+    Effect.runPromise(server.createSpecialist(details))
+  )
+  ipcMain.handle(Channels.updateSpecialist, (_, id: unknown, details: unknown) =>
+    Effect.runPromise(server.updateSpecialist(id, details))
+  )
+  ipcMain.handle(Channels.removeSpecialist, (_, id: unknown) => Effect.runPromise(server.removeSpecialist(id)))
+  ipcMain.handle(Channels.listAppointments, (_, from: unknown, to: unknown) =>
+    Effect.runPromise(server.listAppointments(from, to))
+  )
+  ipcMain.handle(Channels.listLinkedAppointments, (_, links: unknown) =>
+    Effect.runPromise(server.listLinkedAppointments(links))
+  )
+  ipcMain.handle(Channels.findSlots, (_, query: unknown) => Effect.runPromise(server.findSlots(query)))
+  ipcMain.handle(Channels.bookAppointment, (_, input: unknown) => Effect.runPromise(server.bookAppointment(input)))
+  ipcMain.handle(Channels.moveAppointment, (_, id: unknown, to: unknown) =>
+    Effect.runPromise(server.moveAppointment(id, to))
+  )
+  ipcMain.handle(Channels.recordAppointment, (_, id: unknown, outcome: unknown) =>
+    Effect.runPromise(server.recordAppointment(id, outcome))
+  )
+  ipcMain.handle(Channels.cancelAppointment, (_, id: unknown, reason: unknown) =>
+    Effect.runPromise(server.cancelAppointment(id, reason))
+  )
+  ipcMain.handle(Channels.approveAppointment, (_, id: unknown) => Effect.runPromise(server.approveAppointment(id)))
+  ipcMain.handle(Channels.listAppointmentReminders, (_, id: unknown) =>
+    Effect.runPromise(server.listAppointmentReminders(id))
+  )
+  ipcMain.handle(Channels.getAppointment, (_, id: unknown) => Effect.runPromise(server.getAppointment(id)))
+  ipcMain.handle(Channels.listActivity, (_, query: unknown) => Effect.runPromise(server.listActivity(query)))
+  ipcMain.handle(Channels.listActionSteps, (_, id: unknown) => Effect.runPromise(server.listActionSteps(id)))
+
+  // A link in an employee's answer comes from a model, so it opens only after the person agrees.
+  ipcMain.handle(Channels.openLink, async (event, url: unknown) => {
+    const link = typeof url === "string" && URL.canParse(url) ? new URL(url) : null
+    if (link === null || !LINK_PROTOCOLS.includes(link.protocol)) return
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      type: "question" as const,
+      buttons: ["Open", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+      message: "Open this link in your browser?",
+      detail: link.href
+    }
+    const { response } = await (window === null
+      ? dialog.showMessageBox(options)
+      : dialog.showMessageBox(window, options))
+    if (response === 0) await shell.openExternal(link.href)
+  })
+
+  // Only the system's own page for the microphone, never an address from the renderer.
+  ipcMain.handle(Channels.openMicrophoneSettings, async () => {
+    const page = MICROPHONE_SETTINGS[process.platform]
+    if (page !== undefined) await shell.openExternal(page)
+  })
+  ipcMain.handle(Channels.voiceStatus, () => Effect.runPromise(server.voiceStatus))
+  ipcMain.handle(Channels.saveVoiceKey, (_, key: unknown) => Effect.runPromise(server.saveVoiceKey(key)))
+  ipcMain.handle(Channels.removeVoiceKey, () => Effect.runPromise(server.removeVoiceKey))
+  ipcMain.handle(Channels.transcribe, (_, input: unknown) => Effect.runPromise(server.transcribe(input)))
 
   ipcMain.handle(Channels.theme, (event, theme: unknown) => {
     if (theme !== "light" && theme !== "dark") return

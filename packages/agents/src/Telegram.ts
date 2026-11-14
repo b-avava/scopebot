@@ -25,7 +25,7 @@ import {
 } from "@scope-bot/integrations"
 import { Context, Effect, Fiber, FiberSet, Layer, Redacted } from "effect"
 import { Agents, nowIso } from "./Agents.ts"
-import { makeInbox, type SendText } from "./ChannelInbox.ts"
+import { type AppointmentStepError, makeInbox, type SendText } from "./ChannelInbox.ts"
 
 /** Telegram holds a request open this long while nothing happens. */
 const POLL_SECONDS = 25
@@ -74,10 +74,16 @@ export class Telegram extends Context.Service<
       chatId: ConversationId,
       text: string
     ): Effect.Effect<ChatMessage, ConversationNotFound | TelegramNotConnected | TelegramSendFailed>
+    /** The employee writes first, like a reminder. The audit log gets the summary. */
+    notify(
+      chatId: ConversationId,
+      text: string,
+      summary: string
+    ): Effect.Effect<ChatMessage, ConversationNotFound | TelegramNotConnected | TelegramSendFailed>
     sendDraft(
       id: MessageId,
       text?: string
-    ): Effect.Effect<ChatMessage, DraftNotFound | TelegramNotConnected | TelegramSendFailed>
+    ): Effect.Effect<ChatMessage, DraftNotFound | TelegramNotConnected | TelegramSendFailed | AppointmentStepError>
     discardDraft(id: MessageId): Effect.Effect<ChatMessage, DraftNotFound>
     /** Gives a chat a person took over back to the employee. */
     resume(chatId: ConversationId): Effect.Effect<void, ConversationNotFound>
@@ -343,6 +349,11 @@ export class Telegram extends Context.Service<
           yield* inbox.findChat(chatId)
           yield* requireConnected
           return yield* inbox.write(chatId, text, sendText)
+        }),
+        notify: Effect.fn("Telegram.notify")(function* (chatId, text, summary) {
+          yield* inbox.findChat(chatId)
+          yield* requireConnected
+          return yield* inbox.notify(chatId, text, summary, sendText)
         }),
         sendDraft: Effect.fn("Telegram.sendDraft")(function* (id, text) {
           yield* requireConnected

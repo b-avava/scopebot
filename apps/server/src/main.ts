@@ -2,9 +2,12 @@ import { createServer } from "node:http"
 import { NodeHttpServer, NodeRuntime, NodeServices } from "@effect/platform-node"
 import {
   Activities,
+  ActivityLog,
   AgentChat,
   Agents,
   Approvals,
+  CalendarTools,
+  Coaching,
   ConfiguredChatModel,
   Contacts,
   Deals,
@@ -12,12 +15,17 @@ import {
   Instagram,
   LocalCli,
   ModelProviders,
+  ReminderSenders,
+  Reminders,
   Services,
+  Suggestions,
   Telegram,
+  Voice,
   WhatsApp
 } from "@scope-bot/agents"
 import {
   Accounts,
+  CalendarStorage,
   databaseLayer,
   InstagramStorage,
   ProviderKeys,
@@ -85,7 +93,11 @@ const InstagramSetupLayer = Layer.effect(
   })
 )
 
-const AgentServices = AgentChat.layer.pipe(
+const CalendarStorageLayer = CalendarStorage.layerPostgres.pipe(Layer.provide(DatabaseLayer))
+
+const AgentServices = Layer.mergeAll(Coaching.layer, Voice.layer).pipe(
+  Layer.provideMerge(AgentChat.layer),
+  Layer.provideMerge(CalendarTools.layerWithCalendar),
   Layer.provideMerge(Agents.layer),
   Layer.provideMerge(Contacts.layer),
   Layer.provideMerge(Departments.layer),
@@ -93,11 +105,13 @@ const AgentServices = AgentChat.layer.pipe(
   Layer.provideMerge(Services.layer),
   Layer.provideMerge(Activities.layer),
   Layer.provideMerge(Approvals.layer),
+  Layer.provideMerge(ActivityLog.layer),
   Layer.provideMerge(ModelProviders.layer),
   Layer.provide(ConfiguredChatModel),
   Layer.provide(FetchHttpClient.layer),
   Layer.provide(KeysLayer),
   Layer.provide(LocalCli.layer.pipe(Layer.provide(NodeServices.layer))),
+  Layer.provide(CalendarStorageLayer),
   Layer.provide(StoreLayer)
 )
 
@@ -112,6 +126,17 @@ const ChannelServices = Layer.mergeAll(
   )
 ).pipe(Layer.provide(AgentServices), Layer.provide(StoreLayer))
 
+// Every minute, clients get the reminders that are due, on the channel they write from.
+// ...and what people agree to from an employee's suggestions, with the client told.
+const ReminderServices = Suggestions.layer.pipe(
+  Layer.provideMerge(Reminders.layerRunning),
+  Layer.provide(AgentServices),
+  Layer.provide(ReminderSenders.layer),
+  Layer.provide(ChannelServices),
+  Layer.provide(CalendarStorageLayer),
+  Layer.provide(StoreLayer)
+)
+
 const AuthServices = AuthorizationLayer.pipe(
   Layer.provideMerge(Auth.layer),
   Layer.provide(AccountsLayer),
@@ -120,6 +145,7 @@ const AuthServices = AuthorizationLayer.pipe(
 
 const Main = HttpRouter.serve(Layer.mergeAll(ApiRoutes, InstagramRoutes)).pipe(
   Layer.provide(AuthServices),
+  Layer.provide(ReminderServices),
   Layer.provide(ChannelServices),
   Layer.provide(AgentServices),
   Layer.provide(ServerLayer)

@@ -54,7 +54,17 @@ const errorMessages: Record<BridgeError, string> = {
   "instagram-not-connected": "Instagram is not connected. Connect it in Settings.",
   "instagram-needs-agent": "Choose the employee who answers first.",
   "instagram-window-closed": "Instagram no longer lets the business answer this chat. The customer has to write again.",
-  "instagram-send-failed": "Instagram did not take the message. Try again in a moment."
+  "instagram-send-failed": "Instagram did not take the message. Try again in a moment.",
+  "calendar-off": "The calendar is off. Turn it on in Business, Features.",
+  "time-taken": "This time was just taken. Pick another one.",
+  "time-unavailable": "This time cannot be booked: it is outside the hours, on a day off, or too soon.",
+  "appointment-closed": "This appointment has already changed. Reopen it.",
+  "cannot-answer-again": "Only the last question in your own chat can be answered again.",
+  "too-many-rules": "An employee follows up to 30 rules. Turn one off or delete one first.",
+  "voice-not-configured": "Speaking needs an ElevenLabs key. An owner or admin adds it in Providers.",
+  "voice-failed": "ElevenLabs didn't answer, or didn't accept the key. Try again, or check the key in Providers.",
+  "voice-key-rejected": "ElevenLabs didn't accept the key. An owner or admin checks it in Providers.",
+  "nothing-heard": "Couldn't make out any words in the recording."
 }
 
 export const errorMessage = (error: BridgeError) => errorMessages[error]

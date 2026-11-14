@@ -1,7 +1,16 @@
 import { assert, layer } from "@effect/vitest"
-import { AgentChat, Agents, ChatModel, ModelProviders } from "@scope-bot/agents"
+import {
+  AgentChat,
+  Agents,
+  CalendarTools,
+  ChatModel,
+  ModelProviders,
+  ReminderSenders,
+  Reminders,
+  Suggestions
+} from "@scope-bot/agents"
 import { Api } from "@scope-bot/contracts"
-import { Store } from "@scope-bot/db"
+import { CalendarStorage, Store } from "@scope-bot/db"
 import { AgentId, ConversationId, ModelNotConfigured } from "@scope-bot/domain"
 import { Effect, Layer } from "effect"
 import { HttpServer } from "effect/http"
@@ -23,10 +32,21 @@ const model = Layer.succeed(
   })
 )
 
-const services = AgentChat.layer.pipe(
+/** Clients are not told anything in these tests. */
+const quietSenders = Layer.succeed(
+  ReminderSenders,
+  ReminderSenders.of({ whatsapp: () => Effect.void, telegram: () => Effect.void, instagram: () => Effect.void })
+)
+
+const services = Suggestions.layer.pipe(
+  Layer.provideMerge(Reminders.layer),
+  Layer.provide(quietSenders),
+  Layer.provideMerge(AgentChat.layer),
+  Layer.provideMerge(CalendarTools.layerWithCalendar),
   Layer.provideMerge(Agents.layer),
   Layer.provideMerge(ModelProviders.layerApiOnly),
   Layer.provide(model),
+  Layer.provide(CalendarStorage.layerMemory),
   Layer.provide(Store.layerMemory)
 )
 
@@ -67,6 +87,11 @@ layer(Layer.mergeAll(handlers, TestAuthorization, HttpServer.layerServices))("Ag
 
       const actions = yield* client.chat.actions({ params: { id: agent.id } })
       assert.strictEqual(actions[0]?.summary, "Replied to the customer")
+
+      // The reply was saved, so there is nothing left to show while answering, and nothing to stop.
+      const live = yield* client.chat.live({ params: chatOf(agent), query: { after: -1 } })
+      assert.deepInclude(live, { status: "idle", text: "" })
+      yield* client.chat.stop({ params: chatOf(agent) })
 
       yield* client.agents.remove({ params: { id: agent.id } })
       assert.isFalse((yield* client.agents.list()).some((item) => item.id === agent.id))

@@ -334,6 +334,24 @@ export const ServicePanel = ({
                 className={fieldClasses}
               />
             </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Appointment, min</span>
+              <input
+                type="number"
+                min={5}
+                step={5}
+                placeholder="Not booked"
+                value={draft.minutes ?? ""}
+                onChange={(event) => {
+                  const { minutes: _old, ...rest } = draft
+                  const value = Math.round(Number(event.target.value))
+                  setDraft(
+                    event.target.value === "" || value < 5 ? rest : { ...rest, minutes: Math.min(value, 24 * 60) }
+                  )
+                }}
+                className={fieldClasses}
+              />
+            </label>
           </div>
           {draft.packages.map((item, index) => (
             <PackageRow

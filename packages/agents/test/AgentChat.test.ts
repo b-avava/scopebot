@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest"
-import { Store } from "@scope-bot/db"
+import { CalendarStorage, Store } from "@scope-bot/db"
 import {
   AgentId,
   ConversationId,
@@ -13,17 +13,20 @@ import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentChat, parseReply, systemPrompt } from "../src/AgentChat.ts"
 import { Agents } from "../src/Agents.ts"
+import { CalendarTools } from "../src/CalendarTools.ts"
 import { ChatModel, type ChatRequest } from "../src/ChatModel.ts"
 import { ModelProviders } from "../src/ModelProviders.ts"
 import { isWithinHours } from "../src/WorkingHours.ts"
 
 const makeLayer = (reply: ChatModel["Service"]["reply"]) =>
   AgentChat.layer.pipe(
+    Layer.provideMerge(CalendarTools.layerWithCalendar),
     Layer.provideMerge(Agents.layer),
     Layer.provideMerge(ModelProviders.layerApiOnly),
     Layer.provideMerge(
       Layer.succeed(ChatModel, ChatModel.of({ models: Effect.succeed({ defaultModel: "", models: [] }), reply }))
     ),
+    Layer.provideMerge(CalendarStorage.layerMemory),
     Layer.provideMerge(Store.layerMemory)
   )
 
@@ -64,6 +67,31 @@ describe("AgentChat", () => {
       assert.strictEqual(actions[1]?.outputTokens, 3)
       assert.strictEqual(actions[1]?.sourceMessageId, sent.customerMessage.id)
     }).pipe(Effect.provide(echoLayer(requests)))
+  })
+
+  it.effect("keeps why it answered, the chat and the reply on the record, and never shows the reason", () => {
+    const requests: Array<ChatRequest> = []
+    const layer = makeLayer((request) => {
+      requests.push(request)
+      return Effect.succeed({
+        text: "We open at 10. [[WHY: the customer asked about opening hours]]",
+        model: request.model,
+        inputTokens: 1,
+        outputTokens: 1
+      })
+    })
+    return Effect.gen(function* () {
+      const chat = yield* AgentChat
+      const agent = yield* hire
+      const sent = yield* chat.send(agent.id, firstChat(agent), "When do you open?")
+
+      assert.strictEqual(sent.reply?.text, "We open at 10.")
+      assert.include(requests[0]?.system ?? "", "[[WHY:")
+      const action = (yield* chat.actions(agent.id)).at(-1)
+      assert.strictEqual(action?.reason, "the customer asked about opening hours")
+      assert.strictEqual(action?.replyId, sent.reply?.id)
+      assert.strictEqual(action?.conversationId, firstChat(agent))
+    }).pipe(Effect.provide(layer))
   })
 
   it.effect("uses the agent's settings", () => {
@@ -548,9 +576,25 @@ describe("AgentChat", () => {
   })
 
   it("reads a handoff tag", () => {
-    assert.deepStrictEqual(parseReply("Hi"), { text: "Hi", handoffReason: null })
-    assert.deepStrictEqual(parseReply("Bye [[HANDOFF: angry]]"), { text: "Bye", handoffReason: "angry" })
+    assert.deepStrictEqual(parseReply("Hi"), { text: "Hi", handoffReason: null, reason: undefined })
+    assert.deepStrictEqual(parseReply("Bye [[HANDOFF: angry]]"), {
+      text: "Bye",
+      handoffReason: "angry",
+      reason: undefined
+    })
     assert.strictEqual(parseReply("[[HANDOFF:]]").handoffReason, "The employee asked for help")
+  })
+
+  it("keeps the reason for the log out of the customer's text", () => {
+    assert.deepStrictEqual(parseReply("See you at 10 [[WHY: the client chose the earliest time]]"), {
+      text: "See you at 10",
+      handoffReason: null,
+      reason: "the client chose the earliest time"
+    })
+    assert.deepStrictEqual(parseReply("[[WHY:   ]]Hello"), { text: "Hello", handoffReason: null, reason: undefined })
+    const long = parseReply(`Ok [[WHY: ${"a".repeat(400)}]]`).reason ?? ""
+    assert.strictEqual(long.length, 300)
+    assert.isTrue(long.endsWith("…"))
   })
 
   it("knows working hours in the business's time zone", () => {

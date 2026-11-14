@@ -1,5 +1,9 @@
 import { Schema } from "effect"
 import { AgentId } from "./Agent.ts"
+import { UserId } from "./Auth.ts"
+import { Day } from "./Business.ts"
+import { AppointmentId, SpecialistId } from "./Calendar.ts"
+import { Channel } from "./Channel.ts"
 import { ContactId } from "./Contact.ts"
 
 export const MessageId = Schema.String.pipe(Schema.brand("MessageId"))
@@ -10,10 +14,6 @@ export type ConversationId = typeof ConversationId.Type
 
 /** The title of a chat until its first message names it. */
 export const NEW_CHAT_TITLE = "New chat"
-
-/** Where customers write from, other than the app itself. */
-export const Channel = Schema.Literals(["whatsapp", "telegram", "instagram"])
-export type Channel = typeof Channel.Type
 
 /**
  * One tab of an employee, or a chat with a customer on a channel. Tabs separate
@@ -26,6 +26,12 @@ export const Conversation = Schema.Struct({
   title: Schema.NonEmptyString,
   createdAt: Schema.String,
   channel: Schema.optionalKey(Channel),
+  /**
+   * On a tab: the person whose chat it is. Only they see it, and the employee's
+   * memory is shared only among their tabs. Empty on tabs from before, which
+   * owners and admins share.
+   */
+  ownerId: Schema.optionalKey(UserId),
   /** Who to answer on the channel, such as a WhatsApp chat id. */
   address: Schema.optionalKey(Schema.String),
   contactId: Schema.optionalKey(ContactId)
@@ -71,6 +77,47 @@ const MessageImages = Schema.Array(ChatImage).check(Schema.isMaxLength(MAX_MESSA
 export const MessageDelivery = Schema.Literals(["draft", "sending", "sent", "failed", "discarded"])
 export type MessageDelivery = typeof MessageDelivery.Type
 
+/** On a suggestion in a chat with the team: what the person decided. Empty while it waits. */
+const decided = Schema.optionalKey(Schema.Literals(["done", "left"]))
+
+/**
+ * What a reply does to an appointment. On a draft it happens only when a person
+ * sends it: a booked time is held until then, a move or a cancel waits. In a
+ * chat with the team it is a suggestion, done only when the person says so.
+ */
+export const AppointmentStep = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("book"), appointmentId: AppointmentId, decided }),
+  Schema.Struct({
+    kind: Schema.Literal("move"),
+    appointmentId: AppointmentId,
+    specialistId: SpecialistId,
+    startsAt: Schema.String,
+    decided
+  }),
+  Schema.Struct({ kind: Schema.Literal("cancel"), appointmentId: AppointmentId, reason: Schema.String, decided })
+])
+export type AppointmentStep = typeof AppointmentStep.Type
+
+/**
+ * A card under an answer in a chat with the team (ADR 0024). It names the
+ * records a tool looked up, and the app draws them from the calendar as they
+ * are now, never from the model's text.
+ */
+export const ChatCard = Schema.Union([
+  /** One specialist's appointments on one day. */
+  Schema.Struct({
+    kind: Schema.Literal("day"),
+    day: Day,
+    specialistId: SpecialistId,
+    /** The appointments the answer saw, so the card can show what changed since. */
+    appointmentIds: Schema.optionalKey(Schema.Array(AppointmentId))
+  })
+])
+export type ChatCard = typeof ChatCard.Type
+
+/** More would bury the answer. A longer look-up is better asked about in the calendar. */
+export const MAX_CARDS = 3
+
 export const ChatMessage = Schema.Struct({
   id: MessageId,
   agentId: AgentId,
@@ -92,7 +139,16 @@ export const ChatMessage = Schema.Struct({
    * happens only when the draft is sent, since only then does the customer
    * hear that a colleague will answer.
    */
-  handoff: Schema.optionalKey(Schema.String)
+  handoff: Schema.optionalKey(Schema.String),
+  /** On a reply: what it does to an appointment. */
+  appointment: Schema.optionalKey(AppointmentStep),
+  /**
+   * A new version of that message: an answer given again, or a question
+   * edited. It names the first version, and the latest one is shown (ADR 0023).
+   */
+  replaces: Schema.optionalKey(MessageId),
+  /** On a reply in a chat with the team: what the app shows under it. */
+  cards: Schema.optionalKey(Schema.Array(ChatCard))
 })
 export type ChatMessage = typeof ChatMessage.Type
 
@@ -104,7 +160,24 @@ export const LastMessage = Schema.Struct({
 })
 export type LastMessage = typeof LastMessage.Type
 
-/** Immutable audit record of something an agent did. */
+/** The person who agreed to what an employee did, or turned it down. */
+export const ActionDecision = Schema.Struct({
+  userId: UserId,
+  name: Schema.String,
+  agreed: Schema.Boolean
+})
+export type ActionDecision = typeof ActionDecision.Type
+
+/** The longest reason kept on an action. */
+export const MAX_REASON_LENGTH = 300
+
+/**
+ * Immutable audit record of something an agent did. Records from before the
+ * activity log (ADR 0022) have none of the optional fields.
+ */
+/** What the log says when no model could answer a message. The next try starts afresh. */
+export const COULD_NOT_REPLY = "Could not reply"
+
 export const AgentAction = Schema.Struct({
   id: Schema.String,
   agentId: AgentId,
@@ -116,7 +189,17 @@ export const AgentAction = Schema.Struct({
   model: Schema.String,
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
-  createdAt: Schema.String
+  createdAt: Schema.String,
+  /** The chat it happened in. It stays when the chat goes, like the record itself. */
+  conversationId: Schema.optionalKey(ConversationId),
+  /** Why, in the employee's own words. Only what a model did has one. */
+  reason: Schema.optionalKey(Schema.String),
+  /** Set when a person's click made it happen, or stopped it. */
+  decidedBy: Schema.optionalKey(ActionDecision),
+  /** The reply it wrote, so the log can tell whether a draft still waits. */
+  replyId: Schema.optionalKey(MessageId),
+  /** The appointment it booked or changed, so the log can tell whether it still waits for an OK. */
+  appointmentId: Schema.optionalKey(AppointmentId)
 })
 export type AgentAction = typeof AgentAction.Type
 
@@ -154,11 +237,23 @@ export const SideAnswer = Schema.Struct({
 })
 export type SideAnswer = typeof SideAnswer.Type
 
+/** What a person decides about an employee's suggestion in a chat with the team. */
+export const DecideSuggestion = Schema.Struct({ decision: Schema.Literals(["do", "leave"]) })
+export type DecideSuggestion = typeof DecideSuggestion.Type
+
+/** The message has no suggestion that still waits, or the person may not see it. */
+export class SuggestionNotFound extends Schema.TaggedError<SuggestionNotFound>()(
+  "SuggestionNotFound",
+  {},
+  { httpApiStatus: 404 }
+) {}
+
 export const SentMessage = Schema.Struct({
   customerMessage: ChatMessage,
   /** Empty when the agent stayed silent, for example after a handoff. */
   reply: Schema.NullOr(ChatMessage),
-  outcome: Schema.Literals(["replied", "outside-hours", "escalated", "waiting-for-human"])
+  /** Stopped: a person stopped the answer before it was done, and nothing was saved (ADR 0025). */
+  outcome: Schema.Literals(["replied", "outside-hours", "escalated", "waiting-for-human", "stopped"])
 })
 export type SentMessage = typeof SentMessage.Type
 

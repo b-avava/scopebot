@@ -1,9 +1,13 @@
 import { assert, layer } from "@effect/vitest"
 import {
+  ACTIVITY_PAGE_SIZE,
   type Activity,
   ActivityId,
+  type ActivityQuery,
   type Agent,
+  type AgentAction,
   AgentId,
+  type AgentRule,
   ApprovalId,
   type ApprovalRequest,
   BusinessId,
@@ -22,15 +26,17 @@ import {
   MessageId,
   type Pipeline,
   PipelineId,
+  RuleId,
   type Service,
   ServiceId,
+  SpecialistId,
   StageId,
   UserId
 } from "@scope-bot/domain"
 import { Effect, Exit, Layer, Option, Redacted } from "effect"
 import { SqlClient } from "effect/sql"
 import { Accounts } from "../src/Accounts.ts"
-import { CurrentBusiness } from "../src/CurrentBusiness.ts"
+import { CurrentBusiness, CurrentViewer } from "../src/CurrentBusiness.ts"
 import { InstagramStorage } from "../src/InstagramStorage.ts"
 import { migrate } from "../src/Migrations.ts"
 import { pgStoreLayer } from "../src/PgStore.ts"
@@ -513,6 +519,340 @@ layer(services, { timeout: "60 seconds" })("PgStore", (it) => {
           yield* store.saveConversation(conversation("other", "nino"))
           yield* store.removeConversation(chat.id)
           assert.deepStrictEqual(yield* store.actions(nino.id), [action])
+        })
+      )
+    })
+  )
+
+  it.effect("shows the activity log with its chats, what waits, and counts from the database", () =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const accounts = yield* Accounts
+      const business = yield* newBusiness
+      const nino = agent("nino")
+      const tako = agent("tako")
+      const tamar = UserId.make(crypto.randomUUID())
+      const other = UserId.make(crypto.randomUUID())
+      for (const [id, name] of [
+        [tamar, "Tamar Beridze"],
+        [other, "Giorgi"]
+      ] as const) {
+        yield* accounts.createUser({
+          id,
+          businessId: business,
+          email: `${id}@example.com`,
+          name,
+          passwordHash: "hash",
+          role: "member"
+        })
+      }
+      const anna = contact("anna", { name: "Anna Kapanadze" })
+      const whatsapp: Conversation = {
+        ...conversation("wa", "nino"),
+        channel: "whatsapp",
+        address: "995555",
+        contactId: anna.id
+      }
+      const tab: Conversation = { ...conversation("tab", "tako"), ownerId: tamar }
+      const hidden: Conversation = { ...conversation("hidden", "tako"), ownerId: other }
+      const action = (id: string, createdAt: string, extra: Partial<AgentAction> = {}): AgentAction => ({
+        id,
+        agentId: nino.id,
+        tool: "reply",
+        status: "done",
+        summary: "Replied to the customer",
+        sourceMessageId: MessageId.make("hello"),
+        model: "",
+        inputTokens: 0,
+        outputTokens: 0,
+        createdAt,
+        conversationId: whatsapp.id,
+        ...extra
+      })
+      const viewer = { userId: tamar, name: "Tamar Beridze", seesShared: true }
+      const query: ActivityQuery = { from: "2026-11-11T00:00:00.000Z", timeZone: "Asia/Tbilisi" }
+
+      yield* inBusiness(business)(
+        Effect.gen(function* () {
+          yield* store.saveAgent(nino)
+          yield* store.saveAgent(tako)
+          yield* store.saveContact(anna)
+          yield* Effect.forEach([whatsapp, tab, hidden], store.saveConversation)
+          yield* store.appendMessage(
+            message("hello", whatsapp, { text: "How much is a filling?", createdAt: "2026-11-12T07:00:00.000Z" })
+          )
+          yield* store.appendMessage(
+            message("draft", whatsapp, {
+              role: "agent",
+              text: "80 GEL",
+              delivery: "draft",
+              createdAt: "2026-11-12T07:00:05.000Z"
+            })
+          )
+          yield* store.appendEscalation({
+            id: "escalation",
+            agentId: nino.id,
+            conversationId: whatsapp.id,
+            reason: "Upset",
+            createdAt: "2026-11-12T08:00:00.000Z",
+            resolvedAt: null
+          })
+          const decided = { userId: tamar, name: "Tamar Beridze", agreed: true }
+          yield* Effect.forEach(
+            [
+              action("old", "2026-11-01T09:00:00.000Z"),
+              action("draft-reply", "2026-11-12T07:00:05.000Z", {
+                summary: "Wrote a reply for a person to send",
+                replyId: MessageId.make("draft"),
+                reason: "the client asked for the price"
+              }),
+              action("lookup", "2026-11-12T07:00:03.000Z", { tool: "calendar.free_times", summary: "Looked up" }),
+              action("handoff", "2026-11-12T08:00:00.000Z", { tool: "handoff", summary: "Handed to a human: Upset" }),
+              action("team", "2026-11-12T09:00:00.000Z", {
+                agentId: tako.id,
+                tool: "calendar.move",
+                summary: "Moved Beka",
+                conversationId: tab.id,
+                sourceMessageId: MessageId.make("question"),
+                decidedBy: decided
+              }),
+              action("private", "2026-11-12T09:30:00.000Z", {
+                agentId: tako.id,
+                status: "failed",
+                conversationId: hidden.id
+              }),
+              action("yesterday", "2026-11-11T21:00:00.000Z", { status: "failed", summary: "Could not reply" })
+            ],
+            store.appendAction
+          )
+
+          const page = yield* Effect.provideService(store.activityLog(query), CurrentViewer, viewer)
+          assert.deepStrictEqual(
+            page.entries.map((entry) => entry.action.id),
+            ["team", "handoff", "draft-reply", "lookup", "yesterday"]
+          )
+          const [team, handoff, draft] = page.entries
+          assert.deepStrictEqual(team?.chat, {
+            id: tab.id,
+            channel: null,
+            contactId: null,
+            contactName: null,
+            personName: "Tamar Beridze"
+          })
+          assert.deepStrictEqual(team?.action.decidedBy, decided)
+          assert.strictEqual(handoff?.waiting, "with-person")
+          assert.strictEqual(draft?.waiting, "draft")
+          assert.strictEqual(draft?.action.reason, "the client asked for the price")
+          assert.deepStrictEqual(draft?.chat?.contactName, "Anna Kapanadze")
+          assert.deepStrictEqual(draft?.trigger, {
+            role: "customer",
+            text: "How much is a filling?",
+            createdAt: "2026-11-12T07:00:00.000Z"
+          })
+          assert.isNull(page.next)
+          assert.deepStrictEqual(page.counts, {
+            total: 5,
+            agents: page.counts.agents.length === 2 ? page.counts.agents : [],
+            kinds: { reply: 2, appointment: 1, lookup: 1, handoff: 1, failed: 1 }
+          })
+          assert.deepStrictEqual(
+            [...page.counts.agents].sort((a, b) => a.agentId.localeCompare(b.agentId)),
+            [
+              { agentId: nino.id, count: 4 },
+              { agentId: tako.id, count: 1 }
+            ]
+          )
+          // 21:00 UTC on the 11th is already the 12th in Tbilisi.
+          assert.deepStrictEqual(page.days, [{ day: "2026-11-12", total: 5, failed: 1 }])
+
+          const failed = yield* Effect.provideService(
+            store.activityLog({ ...query, filter: "failed", agentId: nino.id }),
+            CurrentViewer,
+            viewer
+          )
+          assert.deepStrictEqual(
+            failed.entries.map((entry) => entry.action.id),
+            ["yesterday"]
+          )
+          assert.strictEqual(failed.counts.total, 1)
+          assert.deepStrictEqual(failed.counts.kinds, { reply: 2, appointment: 0, lookup: 1, handoff: 1, failed: 1 })
+
+          const found = yield* Effect.provideService(
+            store.activityLog({ ...query, search: "kapanadze" }),
+            CurrentViewer,
+            viewer
+          )
+          assert.strictEqual(found.counts.total, 4)
+          const why = yield* Effect.provideService(
+            store.activityLog({ ...query, search: "price" }),
+            CurrentViewer,
+            viewer
+          )
+          assert.deepStrictEqual(
+            why.entries.map((entry) => entry.action.id),
+            ["draft-reply"]
+          )
+
+          // Background work sees every chat.
+          assert.strictEqual((yield* store.activityLog(query)).counts.total, 6)
+        })
+      )
+    })
+  )
+
+  it.effect("pages through the log and keeps the turn of an action together", () =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const business = yield* newBusiness
+      const nino = agent("nino")
+      const chat = conversation("chat", "nino")
+      const action = (id: string, createdAt: string, source: string): AgentAction => ({
+        id,
+        agentId: nino.id,
+        tool: "reply",
+        status: "done",
+        summary: id,
+        sourceMessageId: MessageId.make(source),
+        model: "",
+        inputTokens: 0,
+        outputTokens: 0,
+        createdAt,
+        conversationId: chat.id
+      })
+      const minute = (n: number) => new Date(Date.UTC(2026, 10, 12, 8, n)).toISOString()
+
+      yield* inBusiness(business)(
+        Effect.gen(function* () {
+          yield* store.saveAgent(nino)
+          yield* store.saveConversation(chat)
+          yield* store.appendMessage(message("first", chat, { createdAt: minute(0) }))
+          yield* store.appendMessage(message("reply", chat, { role: "agent", createdAt: minute(1) }))
+          yield* store.appendMessage(message("second", chat, { createdAt: minute(10) }))
+          yield* store.appendAction(action("looked", minute(1), "first"))
+          yield* store.appendAction(action("replied", minute(1), "first"))
+          // A person sends the drafted reply later: its source is the reply, but it is the same turn.
+          yield* store.appendAction(action("sent", minute(5), "reply"))
+          yield* store.appendAction(action("next", minute(11), "second"))
+
+          const turn = yield* store.actionTurn("replied")
+          assert.deepStrictEqual(
+            Option.map(turn, (steps) => steps.map((step) => step.id)),
+            Option.some(["looked", "replied", "sent"])
+          )
+          assert.isTrue(Option.isNone(yield* store.actionTurn("missing")))
+
+          yield* Effect.forEach(
+            Array.from({ length: ACTIVITY_PAGE_SIZE + 1 }, (_, index) =>
+              action(`bulk-${String(index).padStart(3, "0")}`, minute(30), "second")
+            ),
+            store.appendAction
+          )
+          const query: ActivityQuery = { from: minute(0), timeZone: "UTC" }
+          const first = yield* store.activityLog(query)
+          assert.strictEqual(first.entries.length, ACTIVITY_PAGE_SIZE)
+          assert.strictEqual(first.entries[0]?.action.id, "bulk-100")
+          assert.isNotNull(first.next)
+          const rest = yield* store.activityLog({ ...query, after: first.next ?? "" })
+          assert.deepStrictEqual(
+            rest.entries.map((entry) => entry.action.id),
+            ["bulk-000", "next", "sent", "replied", "looked"]
+          )
+          assert.isNull(rest.next)
+          assert.strictEqual(rest.counts.total, ACTIVITY_PAGE_SIZE + 5)
+        })
+      )
+    })
+  )
+
+  it.effect("keeps versions of messages, one feedback per person, and the employee's rules", () =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const accounts = yield* Accounts
+      const business = yield* newBusiness
+      const tamar = UserId.make(crypto.randomUUID())
+      yield* accounts.createUser({
+        id: tamar,
+        businessId: business,
+        email: `${tamar}@example.com`,
+        name: "Tamar",
+        passwordHash: "hash",
+        role: "member"
+      })
+      const nino = agent("nino")
+      const chat = conversation("chat", "nino")
+      const first = message("first", chat, { role: "agent", text: "One" })
+      const again = message("again", chat, {
+        role: "agent",
+        text: "Two",
+        replaces: first.id,
+        cards: [{ kind: "day", day: "2026-11-11", specialistId: SpecialistId.make("tamar") }]
+      })
+      const feedback = {
+        messageId: again.id,
+        agentId: nino.id,
+        conversationId: chat.id,
+        userId: tamar,
+        userName: "Tamar",
+        rating: "bad",
+        reasons: ["wrong-facts"],
+        note: "Tamar leaves at 17:00",
+        createdAt: at
+      } as const
+      const rule: AgentRule = {
+        id: RuleId.make("rule"),
+        agentId: nino.id,
+        text: "On Wednesdays Tamar works until 17:00.",
+        enabled: true,
+        status: "suggested",
+        suggestedBy: { userId: tamar, name: "Tamar" },
+        decidedBy: null,
+        sourceMessageId: again.id,
+        createdAt: at,
+        decidedAt: null
+      }
+
+      yield* inBusiness(business)(
+        Effect.gen(function* () {
+          yield* store.saveAgent(nino)
+          yield* store.saveConversation(chat)
+          yield* store.appendMessage(first)
+          yield* store.appendMessage(again)
+          assert.deepStrictEqual(yield* store.conversationMessages(chat.id), [first, again])
+
+          yield* store.saveFeedback(feedback)
+          yield* store.saveFeedback({ ...feedback, rating: "good", reasons: [], note: "" })
+          assert.deepStrictEqual(yield* store.feedbackOf(chat.id, tamar), [
+            { ...feedback, rating: "good", reasons: [], note: "" }
+          ])
+
+          yield* store.saveRule(rule)
+          const added = {
+            ...rule,
+            status: "active",
+            decidedBy: { userId: tamar, name: "Tamar" },
+            decidedAt: at
+          } as const
+          yield* store.saveRule(added)
+          assert.deepStrictEqual(yield* store.rules(nino.id), [added])
+          assert.deepStrictEqual(yield* store.findRule(rule.id), Option.some(added))
+          yield* store.removeRule(rule.id)
+          assert.deepStrictEqual(yield* store.rules(nino.id), [])
+
+          const action: AgentAction = {
+            id: "a",
+            agentId: nino.id,
+            tool: "reply",
+            status: "done",
+            summary: "Replied",
+            sourceMessageId: first.id,
+            model: "",
+            inputTokens: 0,
+            outputTokens: 0,
+            createdAt: at,
+            conversationId: chat.id
+          }
+          yield* store.appendAction(action)
+          assert.deepStrictEqual(yield* store.conversationActions(chat.id), [action])
         })
       )
     })

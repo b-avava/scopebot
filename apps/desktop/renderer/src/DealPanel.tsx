@@ -7,6 +7,7 @@ import { ApprovalCard, Composer, fieldClasses, ownerOptions, PanelClose, TaskLis
 import { chanceOf, priceLabel, stageOf, toDealDetails } from "./crmStats.ts"
 import { DeleteConfirm } from "./DeleteConfirm.tsx"
 import { errorMessage } from "./hooks.ts"
+import { LinkedAppointments } from "./LinkedAppointments.tsx"
 
 const Fact = ({ label, children }: { readonly label: string; readonly children: ReactNode }) => (
   <div className="flex min-w-0 flex-col gap-1">
@@ -207,6 +208,7 @@ export const DealPanel = ({
         {waiting.map((approval) => (
           <ApprovalCard key={approval.id} approval={approval} />
         ))}
+        <LinkedAppointments dealId={deal.id} />
         {error !== null && (
           <p role="alert" className="text-sm text-destructive">
             {error}

@@ -113,6 +113,28 @@ const toReply = (stdout: string, model: string) => {
   })
 }
 
+/** A piece of the reply, with --include-partial-messages. */
+const Partial = Schema.fromJsonString(
+  Schema.Struct({
+    type: Schema.Literal("stream_event"),
+    event: Schema.Struct({
+      type: Schema.Literal("content_block_delta"),
+      delta: Schema.Struct({ type: Schema.Literal("text_delta"), text: Schema.String })
+    })
+  })
+)
+
+/** Tells `onText` the reply so far, line by line of the CLI's output. */
+const partialText = (onText: (soFar: string) => Effect.Effect<void>) => {
+  let soFar = ""
+  return (line: string) => {
+    const partial = Schema.decodeUnknownOption(Partial)(line.trim())
+    if (Option.isNone(partial)) return Effect.void
+    soFar += partial.value.event.delta.text
+    return onText(soFar)
+  }
+}
+
 const replyArgs = (request: ChatRequest, systemFile: string) => [
   "-p",
   ...NO_TOOLS,
@@ -122,6 +144,7 @@ const replyArgs = (request: ChatRequest, systemFile: string) => [
   "--output-format",
   "stream-json",
   "--verbose",
+  ...(request.onText === undefined ? [] : ["--include-partial-messages"]),
   "--system-prompt-file",
   systemFile,
   // Short conversational replies do not need deep reasoning unless the business asks for it.
@@ -231,7 +254,8 @@ export const makeClaudeCodeProvider = (
           input: replyInput(request),
           cwd: folder.path,
           env,
-          timeout: REPLY_TIMEOUT
+          timeout: REPLY_TIMEOUT,
+          ...(request.onText === undefined ? {} : { onLine: partialText(request.onText) })
         })
       )
       const { stdout } = yield* run.pipe(Effect.mapError(() => new ModelFailed({ reason: "cli_unavailable" })))

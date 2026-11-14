@@ -7,6 +7,7 @@ import { errorMessage } from "./hooks.ts"
 import { ProviderIcon } from "./ModelPicker.tsx"
 import { useModels } from "./ModelsContext.tsx"
 import { TitleBar } from "./TitleBar.tsx"
+import { VoiceSettings } from "./VoiceSettings.tsx"
 
 const statusLabels: Record<ProviderCatalog["status"], string> = {
   connected: "Connected",
@@ -425,7 +426,14 @@ const DefaultProvider = ({ connected }: { readonly connected: ReadonlyArray<Prov
   )
 }
 
-export const ProvidersScreen = ({ agents }: { readonly agents: ReadonlyArray<Agent> }) => {
+export const ProvidersScreen = ({
+  agents,
+  canManage
+}: {
+  readonly agents: ReadonlyArray<Agent>
+  /** Owners and admins keep the keys. */
+  readonly canManage: boolean
+}) => {
   const { all } = useModels()
   const [openId, setOpenId] = useState<ProviderId | null>(null)
   const [search, setSearch] = useState("")
@@ -479,6 +487,7 @@ export const ProvidersScreen = ({ agents }: { readonly agents: ReadonlyArray<Age
                   <ProviderList providers={others} onOpen={setOpenId} />
                 </Section>
               )}
+              <VoiceSettings canManage={canManage} />
             </>
           )}
         </div>

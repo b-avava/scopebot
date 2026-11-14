@@ -8,6 +8,7 @@ import { Composer, ContactAvatar, OwnerBadge, Tab, TaskList, Timeline } from "./
 import { dayLabel, money, stageOf, toContactDetails } from "./crmStats.ts"
 import { type DealCreating, DealModal } from "./DealModal.tsx"
 import { errorMessage } from "./hooks.ts"
+import { LinkedAppointments } from "./LinkedAppointments.tsx"
 import { TitleBar } from "./TitleBar.tsx"
 
 const Heading = ({ children }: { readonly children: ReactNode }) => (
@@ -224,6 +225,7 @@ export const ContactProfile = ({
         </main>
 
         <aside className="flex w-[320px] shrink-0 flex-col gap-5 overflow-y-auto border-l p-5">
+          <LinkedAppointments contactId={contact.id} />
           <section className="flex flex-col gap-2">
             <Heading>
               Open deals{open.length > 0 && `, ${money(open.reduce((sum, deal) => sum + deal.amount, 0))} ${currency}`}

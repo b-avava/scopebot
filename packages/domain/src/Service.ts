@@ -27,6 +27,8 @@ export const ServiceDetails = Schema.Struct({
   /** Empty means the service has no price yet, and employees must not name one. */
   price: Schema.NullOr(Money),
   duration: Schema.String,
+  /** How long an appointment for it takes. Empty means it cannot be booked on the calendar yet. */
+  minutes: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 24 * 60 }))),
   packages: Schema.Array(ServicePackage),
   active: Schema.Boolean,
   /** Whether employees may name the price. */

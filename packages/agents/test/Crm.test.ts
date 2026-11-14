@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest"
-import { Store } from "@scope-bot/db"
+import { CalendarStorage, Store } from "@scope-bot/db"
 import {
   ActivityId,
   ActivityNotFound,
@@ -21,14 +21,15 @@ import {
 } from "@scope-bot/domain"
 import { Effect, Layer } from "effect"
 import { Activities } from "../src/Activities.ts"
-import { AgentChat, servicesFor, systemPrompt } from "../src/AgentChat.ts"
+import { AgentChat, systemPrompt } from "../src/AgentChat.ts"
 import { Agents } from "../src/Agents.ts"
 import { Approvals } from "../src/Approvals.ts"
+import { CalendarTools } from "../src/CalendarTools.ts"
 import { ChatModel, type ChatRequest } from "../src/ChatModel.ts"
 import { Contacts } from "../src/Contacts.ts"
 import { Deals } from "../src/Deals.ts"
 import { ModelProviders } from "../src/ModelProviders.ts"
-import { Services } from "../src/Services.ts"
+import { Services, servicesFor } from "../src/Services.ts"
 
 const crm = Layer.mergeAll(Deals.layer, Contacts.layer, Services.layer, Activities.layer, Approvals.layer).pipe(
   Layer.provideMerge(Store.layerMemory)
@@ -36,6 +37,7 @@ const crm = Layer.mergeAll(Deals.layer, Contacts.layer, Services.layer, Activiti
 
 const withModel = (requests: Array<ChatRequest>) =>
   AgentChat.layer.pipe(
+    Layer.provideMerge(CalendarTools.layerWithCalendar),
     Layer.provideMerge(Agents.layer),
     Layer.provideMerge(Contacts.layer),
     Layer.provideMerge(Services.layer),
@@ -53,6 +55,7 @@ const withModel = (requests: Array<ChatRequest>) =>
         })
       )
     ),
+    Layer.provideMerge(CalendarStorage.layerMemory),
     Layer.provideMerge(Store.layerMemory)
   )
 

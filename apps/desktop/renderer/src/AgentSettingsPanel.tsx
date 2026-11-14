@@ -1,4 +1,12 @@
-import type { ActionPolicy, Agent, AgentPermissions, AgentSettings, AgentTone, Department } from "@scope-bot/domain"
+import {
+  type ActionPolicy,
+  type Agent,
+  type AgentPermissions,
+  type AgentSettings,
+  type AgentTone,
+  type Department,
+  MAX_ACTIVE_RULES
+} from "@scope-bot/domain"
 import { LensAvatar } from "@scope-bot/ui/components/avatar/LensAvatar.tsx"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Input } from "@scope-bot/ui/components/motion/input.tsx"
@@ -18,6 +26,7 @@ import {
   Copy,
   FileText,
   Gauge,
+  GraduationCap,
   type LucideIcon,
   MessageCircle,
   Pencil,
@@ -29,6 +38,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react"
 import { ColorPicker, roleLabel, SignPicker } from "./Avatar.tsx"
 import { ConfirmChangeModal, type RiskyChange } from "./ConfirmChangeModal.tsx"
 import { BackupModels, ModelField } from "./ModelSettings.tsx"
+import { RulesPage, useRules } from "./RulesPage.tsx"
 import { timeZones } from "./sampleData.ts"
 import {
   backupsSummary,
@@ -49,13 +59,24 @@ export const toSettings = ({
   ...settings
 }: Agent): AgentSettings => settings
 
-type Page = "main" | "look" | "backups" | "style" | "instructions" | "permissions" | "limits" | "hours" | "escalation"
+type Page =
+  | "main"
+  | "look"
+  | "backups"
+  | "style"
+  | "instructions"
+  | "teamRules"
+  | "permissions"
+  | "limits"
+  | "hours"
+  | "escalation"
 
 const pageTitles: Record<Exclude<Page, "main">, string> = {
   look: "Colour",
   backups: "Backup models",
   style: "Style",
   instructions: "Instructions",
+  teamRules: "Rules from your team",
   permissions: "Permissions",
   limits: "Limits",
   hours: "Working hours",
@@ -228,6 +249,8 @@ const NO_DEPARTMENT = "none"
 interface AgentSettingsPanelProps {
   readonly agent: Agent
   readonly departments: ReadonlyArray<Department>
+  /** Owners and admins change the team's rules; members suggest them. */
+  readonly canManageRules: boolean
   readonly onSave: (settings: AgentSettings) => Promise<string | null>
   readonly onRemove: () => void
   readonly onClose: () => void
@@ -238,11 +261,13 @@ interface AgentSettingsPanelProps {
 export const AgentSettingsPanel = ({
   agent,
   departments,
+  canManageRules,
   onSave,
   onRemove,
   onClose,
   onOpenBusiness
 }: AgentSettingsPanelProps) => {
+  const rules = useRules(agent.id)
   const [draft, setDraft] = useState(() => toSettings(agent))
   const [page, setPage] = useState<Page>("main")
   const [openSelect, setOpenSelect] = useState<"department" | "zone" | null>(null)
@@ -408,6 +433,16 @@ export const AgentSettingsPanel = ({
           value={draft.instructions.trim() === "" ? "Empty" : "Filled in"}
           onOpen={() => setPage("instructions")}
         />
+        <Row
+          icon={GraduationCap}
+          label="Rules from your team"
+          value={
+            rules.suggested.length > 0
+              ? `${rules.suggested.length} suggested`
+              : `${rules.following} of ${MAX_ACTIVE_RULES}`
+          }
+          onOpen={() => setPage("teamRules")}
+        />
         <Row icon={Building2} label="About the business" value="Shared by the team" onOpen={onOpenBusiness} />
       </Group>
 
@@ -475,6 +510,7 @@ export const AgentSettingsPanel = ({
         />
       </label>
     ),
+    teamRules: <RulesPage agent={draft} rules={rules} canManage={canManageRules} />,
     permissions: (
       <>
         <p className={hintClasses}>

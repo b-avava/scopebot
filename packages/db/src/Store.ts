@@ -1,9 +1,12 @@
 import {
   Activity,
   type ActivityId,
+  type ActivityPage,
+  type ActivityQuery,
   Agent,
   AgentAction,
   type AgentId,
+  type AgentRule,
   type ApprovalId,
   ApprovalRequest,
   BusinessProfile,
@@ -21,13 +24,18 @@ import {
   emptyBusinessProfile,
   emptyProviderPreferences,
   type LastMessage,
+  type MessageFeedback,
   type MessageId,
   Pipeline,
   ProviderPreferences,
+  type RuleId,
   Service,
-  type ServiceId
+  type ServiceId,
+  type UserId
 } from "@scope-bot/domain"
 import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect"
+import { type ChatViewer, CurrentViewer, visibleTo } from "./CurrentBusiness.ts"
+import { actionTurnOf, activityPageOf } from "./MemoryActivity.ts"
 
 /** Everything a business has. It is the shape of the memory store and of the old data file. */
 export const Data = Schema.Struct({
@@ -143,6 +151,28 @@ export class Store extends Context.Service<
     searchMessages(query: string): Effect.Effect<ReadonlyArray<ChatMessage>>
     actions(agentId: AgentId): Effect.Effect<ReadonlyArray<AgentAction>>
     appendAction(action: AgentAction): Effect.Effect<void>
+    /**
+     * One page of everyone's actions with what the log shows next to them, and
+     * the counts for its filters. Leaves out the tabs this person may not see.
+     */
+    activityLog(query: ActivityQuery): Effect.Effect<ActivityPage>
+    /**
+     * Everything done in reply to the same message as this action: from the
+     * message before it up to the next one in its chat. None when the action
+     * does not exist or happened in a tab this person may not see.
+     */
+    actionTurn(id: string): Effect.Effect<Option.Option<ReadonlyArray<AgentAction>>>
+    /** Every action recorded in one chat, oldest first. The caller checks that the person may see it. */
+    conversationActions(id: ConversationId): Effect.Effect<ReadonlyArray<AgentAction>>
+    /** Replaces the person's earlier feedback on the same answer. */
+    saveFeedback(feedback: MessageFeedback): Effect.Effect<void>
+    /** One person's feedback on the answers of one chat. */
+    feedbackOf(conversationId: ConversationId, userId: UserId): Effect.Effect<ReadonlyArray<MessageFeedback>>
+    /** In the order they were added. */
+    rules(agentId: AgentId): Effect.Effect<ReadonlyArray<AgentRule>>
+    findRule(id: RuleId): Effect.Effect<Option.Option<AgentRule>>
+    saveRule(rule: AgentRule): Effect.Effect<void>
+    removeRule(id: RuleId): Effect.Effect<void>
     openEscalation(conversationId: ConversationId): Effect.Effect<Option.Option<Escalation>>
     /** Every chat a person has taken over and not handed back. */
     readonly openEscalations: Effect.Effect<ReadonlyArray<Escalation>>
@@ -173,6 +203,9 @@ const make = (initial: Data) =>
   Effect.gen(function* () {
     const lock = yield* Semaphore.make(1)
     let data = initial
+    // Not part of `Data`, which is also the shape of the old data file.
+    let feedback: ReadonlyArray<MessageFeedback> = []
+    let rules: ReadonlyArray<AgentRule> = []
 
     const update = (change: (current: Data) => Data) =>
       Semaphore.withPermit(
@@ -181,6 +214,10 @@ const make = (initial: Data) =>
           data = change(data)
         })
       )
+
+    /** Tabs of other people, whose messages this person must not see. */
+    const hiddenFrom = (viewer: ChatViewer | null) =>
+      new Set(data.conversations.filter((item) => !visibleTo(item, viewer)).map((item) => item.id))
 
     return Store.of({
       business: Effect.sync(() => data.business),
@@ -297,9 +334,21 @@ const make = (initial: Data) =>
       findApproval: (id) => Effect.sync(() => Option.fromNullishOr(data.approvals.find((item) => item.id === id))),
       saveApproval: (approval) => update((current) => ({ ...current, approvals: upsert(current.approvals, approval) })),
       conversations: (agentId) =>
-        Effect.sync(() => data.conversations.filter((conversation) => conversation.agentId === agentId)),
+        CurrentViewer.pipe(
+          Effect.map((viewer) =>
+            data.conversations.filter(
+              (conversation) => conversation.agentId === agentId && visibleTo(conversation, viewer)
+            )
+          )
+        ),
       findConversation: (id) =>
-        Effect.sync(() => Option.fromNullishOr(data.conversations.find((conversation) => conversation.id === id))),
+        CurrentViewer.pipe(
+          Effect.map((viewer) =>
+            Option.fromNullishOr(
+              data.conversations.find((conversation) => conversation.id === id && visibleTo(conversation, viewer))
+            )
+          )
+        ),
       saveConversation: (conversation) =>
         update((current) => ({
           ...current,
@@ -352,32 +401,67 @@ const make = (initial: Data) =>
         Effect.sync(() => Option.fromNullishOr(data.messages.find((message) => message.externalId === externalId))),
       appendMessage: (message) => update((current) => ({ ...current, messages: [...current.messages, message] })),
       saveMessage: (message) => update((current) => ({ ...current, messages: upsert(current.messages, message) })),
-      lastMessages: Effect.sync(() =>
-        data.agents.flatMap((agent) => {
-          const last = data.messages.findLast(
-            (item) => item.agentId === agent.id && item.role !== "note" && reachedCustomer(item)
-          )
-          return last === undefined ? [] : [{ agentId: agent.id, text: last.text, createdAt: last.createdAt }]
+      lastMessages: CurrentViewer.pipe(
+        Effect.map((viewer) => {
+          const hidden = hiddenFrom(viewer)
+          return data.agents.flatMap((agent) => {
+            const last = data.messages.findLast(
+              (item) =>
+                item.agentId === agent.id &&
+                item.role !== "note" &&
+                reachedCustomer(item) &&
+                !hidden.has(item.conversationId)
+            )
+            return last === undefined ? [] : [{ agentId: agent.id, text: last.text, createdAt: last.createdAt }]
+          })
         })
       ),
       searchMessages: (query) =>
-        Effect.sync(() => {
-          const channelChats = new Set(
-            data.conversations.filter((item) => item.channel !== undefined).map((item) => item.id)
-          )
-          const said = data.messages.filter(
-            (message) => message.role !== "note" && !channelChats.has(message.conversationId)
-          )
-          const newest = data.agents.flatMap(
-            (agent) => said.findLast((message) => message.agentId === agent.id && message.text !== "") ?? []
-          )
-          const text = query.toLowerCase()
-          const matching =
-            text === "" ? [] : said.filter((message) => message.text.toLowerCase().includes(text)).slice(-MAX_FOUND)
-          return said.filter((message) => newest.includes(message) || matching.includes(message))
-        }),
+        CurrentViewer.pipe(
+          Effect.map((viewer) => {
+            const channelChats = new Set(
+              data.conversations.filter((item) => item.channel !== undefined).map((item) => item.id)
+            )
+            const hidden = hiddenFrom(viewer)
+            const said = data.messages.filter(
+              (message) =>
+                message.role !== "note" &&
+                !channelChats.has(message.conversationId) &&
+                !hidden.has(message.conversationId)
+            )
+            const newest = data.agents.flatMap(
+              (agent) => said.findLast((message) => message.agentId === agent.id && message.text !== "") ?? []
+            )
+            const text = query.toLowerCase()
+            const matching =
+              text === "" ? [] : said.filter((message) => message.text.toLowerCase().includes(text)).slice(-MAX_FOUND)
+            return said.filter((message) => newest.includes(message) || matching.includes(message))
+          })
+        ),
       actions: (agentId) => Effect.sync(() => data.actions.filter((action) => action.agentId === agentId)),
       appendAction: (action) => update((current) => ({ ...current, actions: [...current.actions, action] })),
+      activityLog: (query) => CurrentViewer.pipe(Effect.map((viewer) => activityPageOf(data, query, viewer))),
+      actionTurn: (id) => CurrentViewer.pipe(Effect.map((viewer) => actionTurnOf(data, id, viewer))),
+      conversationActions: (id) => Effect.sync(() => data.actions.filter((action) => action.conversationId === id)),
+      saveFeedback: (item) =>
+        Effect.sync(() => {
+          feedback = [
+            ...feedback.filter((old) => !(old.messageId === item.messageId && old.userId === item.userId)),
+            item
+          ]
+        }),
+      feedbackOf: (conversationId, userId) =>
+        Effect.sync(() => feedback.filter((item) => item.conversationId === conversationId && item.userId === userId)),
+      rules: (agentId) => Effect.sync(() => rules.filter((rule) => rule.agentId === agentId)),
+      findRule: (id) => Effect.sync(() => Option.fromNullishOr(rules.find((rule) => rule.id === id))),
+      saveRule: (rule) =>
+        Effect.sync(() => {
+          rules = upsert(rules, rule)
+        }),
+      removeRule: (id) =>
+        Effect.sync(() => {
+          rules = rules.filter((rule) => rule.id !== id)
+        }),
       openEscalation: (conversationId) =>
         Effect.sync(() =>
           Option.fromNullishOr(

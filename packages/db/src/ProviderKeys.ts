@@ -1,4 +1,8 @@
-import type { ProviderId, ProviderKey } from "@scope-bot/domain"
+import type { ProviderId, ProviderKey, VoiceProviderId } from "@scope-bot/domain"
+
+/** Whose key it is: a model provider, or the one that turns speech into text. */
+export type KeyOwner = ProviderId | VoiceProviderId
+
 import { Context, Effect, Layer, Option, Redacted } from "effect"
 import { SqlClient } from "effect/sql"
 import { requireBusiness } from "./CurrentBusiness.ts"
@@ -17,13 +21,13 @@ export interface StoredKey {
 export class ProviderKeys extends Context.Service<
   ProviderKeys,
   {
-    get(provider: ProviderId): Effect.Effect<Option.Option<StoredKey>>
-    save(provider: ProviderId, input: ProviderKey): Effect.Effect<void>
-    remove(provider: ProviderId): Effect.Effect<void>
+    get(provider: KeyOwner): Effect.Effect<Option.Option<StoredKey>>
+    save(provider: KeyOwner, input: ProviderKey): Effect.Effect<void>
+    remove(provider: KeyOwner): Effect.Effect<void>
   }
 >()("@scope-bot/db/ProviderKeys") {
   static readonly layerMemory = Layer.sync(ProviderKeys, () => {
-    const keys = new Map<ProviderId, StoredKey>()
+    const keys = new Map<KeyOwner, StoredKey>()
     return ProviderKeys.of({
       get: (provider) => Effect.sync(() => Option.fromNullishOr(keys.get(provider))),
       save: (provider, input) =>

@@ -73,20 +73,20 @@ The agent runtime must pick the lowest tier that can complete the task.
 
 ## 4. Tech stack
 
-| Area         | Choice                                                                                                                                                                       |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Language     | TypeScript (strict)                                                                                                                                                          |
-| Runtime      | Node.js 24 LTS (runs TypeScript directly via type stripping, no build step in development)                                                                                   |
-| Core library | **Effect v4** (`effect`, including `effect/http`, `effect/http-api`, `effect/rpc` and `effect/sql`; plus `@effect/platform-node`, `@effect/sql-pg`, `@effect/vitest`)        |
-| Database     | PostgreSQL                                                                                                                                                                   |
-| Desktop      | Electron (main: Node + Effect; renderer: React), built with electron-vite                                                                                                    |
-| UI           | React, [beUI](https://beui.dev) components (copied into `packages/ui`), Tailwind CSS 4, Motion, Google Sans; TanStack Query for server data (Effect in renderer is optional) |
-| Monorepo     | pnpm workspaces                                                                                                                                                              |
-| Tests        | Vitest via `@effect/vitest`                                                                                                                                                  |
-| Lint, format | Biome (rules in `biome.json`)                                                                                                                                                |
-| CI           | GitHub Actions: lint, typecheck, test, build                                                                                                                                 |
-| Computer use | `desktopCapturer` for screenshots, nut.js for input, small native sidecar (C#/.NET or Rust) for Windows UI Automation                                                        |
-| Deployment   | Docker Compose (self-hosted), same images for cloud                                                                                                                          |
+| Area         | Choice                                                                                                                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language     | TypeScript (strict)                                                                                                                                                                                                                             |
+| Runtime      | Node.js 24 LTS (runs TypeScript directly via type stripping, no build step in development)                                                                                                                                                      |
+| Core library | **Effect v4** (`effect`, including `effect/http`, `effect/http-api`, `effect/rpc` and `effect/sql`; plus `@effect/platform-node`, `@effect/sql-pg`, `@effect/vitest`)                                                                           |
+| Database     | PostgreSQL                                                                                                                                                                                                                                      |
+| Desktop      | Electron (main: Node + Effect; renderer: React), built with electron-vite                                                                                                                                                                       |
+| UI           | React, [beUI](https://beui.dev) components (copied into `packages/ui`), Tailwind CSS 4, Motion, Google Sans; react-markdown with remark-gfm for answers in chats with the team; TanStack Query for server data (Effect in renderer is optional) |
+| Monorepo     | pnpm workspaces                                                                                                                                                                                                                                 |
+| Tests        | Vitest via `@effect/vitest`                                                                                                                                                                                                                     |
+| Lint, format | Biome (rules in `biome.json`)                                                                                                                                                                                                                   |
+| CI           | GitHub Actions: lint, typecheck, test, build                                                                                                                                                                                                    |
+| Computer use | `desktopCapturer` for screenshots, nut.js for input, small native sidecar (C#/.NET or Rust) for Windows UI Automation                                                                                                                           |
+| Deployment   | Docker Compose (self-hosted), same images for cloud                                                                                                                                                                                             |
 
 ### Effect version warning (important for AI assistants)
 
@@ -168,7 +168,7 @@ Agents answer through Claude Code or Codex if you are signed in to them on this 
 
 Not every business needs these, so they stay outside the core.
 
-- **Booking** — appointments: resource (person, room, equipment), time slot, status (booked, confirmed, rescheduled, cancelled, no-show).
+- **Calendar** — appointments with specialists (a person, room or equipment), free times computed from their hours, and deal stages that follow the visits. Off until the business turns it on (see ADR 0018).
 
 ### Agent layer
 
@@ -188,6 +188,7 @@ Not every business needs these, so they stay outside the core.
   - `local_device` — file connector or computer use on a client machine
 - **AgentRun** — one execution triggered by an event (incoming message, schedule, human request).
 - **AgentAction** — immutable audit record: agent, run, tool, input, output, reasoning summary, source event, status, approver.
+- **AgentRule** — a rule the team taught the employee from its answers; members suggest, owners and admins decide (ADR 0023).
 - **ApprovalRequest** — pending risky action awaiting a human decision.
 - **Escalation** — task handed to a human with reason and context.
 
@@ -231,7 +232,8 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 
 - CRM core: contacts, deals, pipelines, activities, documents
 - One agent type: **front desk / sales** on WhatsApp + Telegram — answers, records contacts and deals, moves deals forward, follows up
-- Approval queue and audit log UI
+- Approval queue and audit log UI (the activity log is in, see ADR 0022)
+- Chat with an employee: steps and reasons under answers, answer again, edit the last question, feedback and rules from the team (ADR 0023). Markdown and day cards drawn from the calendar (ADR 0024). Answers written live, with steps and Stop (ADR 0025). Voice input with ElevenLabs Scribe (ADR 0026)
 - Bitrix24 import
 - Dashboard: funnel conversion by stage, response times
 - Desktop app: UI + notifications for approvals (executor not required yet)

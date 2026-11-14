@@ -18,6 +18,7 @@ import { AgentMenu } from "./AgentMenu.tsx"
 import { EmployeeAvatar } from "./Avatar.tsx"
 import { Menu, type MenuPoint } from "./Menu.tsx"
 import { messageTime } from "./messageTime.ts"
+import { plainPreview } from "./plainPreview.ts"
 
 interface AppSidebarProps {
   readonly team: ReadonlyArray<Agent>
@@ -78,7 +79,7 @@ const TeamRow = ({ employee, lastMessage, active, onOpen, onPin, onSettings, onD
           )}
         </span>
         <span className="block truncate text-[13px] font-normal leading-[18px] text-muted-foreground">
-          {lastMessage?.text ?? employee.job}
+          {lastMessage === undefined ? employee.job : plainPreview(lastMessage.text)}
         </span>
       </AnimatedSidebarMenuButton>
       {menuAt !== null && (
