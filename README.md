@@ -4,7 +4,9 @@
 
 # Scope Bot
 
-> An open-source, AI-native CRM where the work is done by AI employees (agents), and humans supervise. Businesses deploy it on their own server.
+> **Hire AI employees. Keep people in charge.**
+>
+> An open-source CRM where AI employees do the work and your team supervises. Businesses run it on their own server.
 
 In most CRMs people do the work, and the CRM keeps the records. Scope Bot turns this around: AI employees answer clients, keep contacts and deals up to date, book appointments and follow up, while the team sets goals and limits, approves what is risky, and steps in when needed.
 
