@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/desktop/assets/img/banner.png" alt="Scope Bot: a chat with the AI employee Amina, who reads the week's appointments from the calendar and lists free times by specialist" width="100%">
+</p>
+
 # Scope Bot
 
 > An open-source, AI-native CRM where the work is done by AI employees (agents), and humans supervise. Businesses deploy it on their own server.
