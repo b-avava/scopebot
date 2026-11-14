@@ -10,8 +10,10 @@ What is planned, in order, and the questions that are still open. How the parts 
 - Chat with an employee: steps and reasons under answers, answer again, edit the last question, feedback and rules from the team (ADR 0023). Markdown and day cards drawn from the calendar (ADR 0024). Answers written live, with steps and Stop (ADR 0025). Voice input with ElevenLabs Scribe (ADR 0026)
 - Bitrix24 import
 - Dashboard: funnel conversion by stage, response times
-- Desktop app: UI + notifications for approvals (executor not required yet)
-- Self-hosted setup: Docker Compose with PostgreSQL, a setup guide, and a way to update an existing install
+- Web interface served by the server, the main way people work (ADR 0027)
+- Desktop app: the same interface + notifications for approvals (executor not required yet)
+- Self-hosted setup: Docker Compose with PostgreSQL and HTTPS, a setup guide, and a way to update an existing install
+- Releases: one version for the repository, a Docker image and installers for every release (ADR 0027)
 
 ## Phase 2
 
@@ -32,5 +34,4 @@ What is planned, in order, and the questions that are still open. How the parts 
 - Which LLM providers and models per agent type (cost vs quality, Russian/Georgian language quality)?
 - Which voice stack for phase 2?
 - Payment providers per country.
-- Which licence? It must let businesses use Scope Bot for their work and fit the GPL-3.0 `libsignal` that WhatsApp brings in (ADR 0015).
 - What a business must know about data residency before choosing where to run its server.

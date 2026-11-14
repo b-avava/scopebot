@@ -4,7 +4,9 @@
 
 # Scope Bot
 
-> An open-source, AI-native CRM where the work is done by AI employees (agents), and humans supervise. Businesses deploy it on their own server.
+> **Hire AI employees. Keep people in charge.**
+>
+> An open-source CRM where AI employees do the work and your team supervises. Businesses run it on their own server.
 
 In most CRMs people do the work, and the CRM keeps the records. Scope Bot turns this around: AI employees answer clients, keep contacts and deals up to date, book appointments and follow up, while the team sets goals and limits, approves what is risky, and steps in when needed.
 
@@ -46,8 +48,8 @@ The comments in `.env.example` explain each setting. More commands and details a
 
 ## Contributing
 
-Pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, conventions and the rules for AI coding assistants.
+Pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, conventions and the rules for AI coding assistants. Found a security problem? Report it privately, as [SECURITY.md](SECURITY.md) explains.
 
 ## Licence
 
-Not chosen yet. It is one of the [open questions](docs/roadmap.md#open-questions).
+[AGPL-3.0](LICENSE). Any business may use Scope Bot for its work. Whoever changes it and lets other people use it over a network must offer them the changed source. Why this licence: [ADR 0027](docs/adr/0027-open-source-distribution-and-versions.md).

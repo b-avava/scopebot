@@ -22,7 +22,7 @@ The first `pnpm dev` downloads the Electron binary, so it takes longer. Stopping
 
 To add a beUI component, run `pnpm dlx shadcn@latest add @beui/<slug>` inside `packages/ui`.
 
-Agents answer through Claude Code or Codex if you are signed in to them on this computer, which is meant for trying things out (see ADR 0007). For an API key, copy `.env.example` to `.env` and set `LLM_PROVIDER` and `LLM_API_KEY`. Both Anthropic and any OpenAI-style API work; see the comments in that file. Check the server with `GET /health`; the API description is at `GET /openapi.json`. The server listens on `127.0.0.1` only, because the API has no authentication yet. Data is kept in `apps/server/.data/` until PostgreSQL is set up.
+Agents answer through Claude Code or Codex if you are signed in to them on this computer, which is meant for trying things out (see ADR 0007). For an API key, copy `.env.example` to `.env` and set `LLM_PROVIDER` and `LLM_API_KEY`. Both Anthropic and any OpenAI-style API work; see the comments in that file. Check the server with `GET /health`; the API description is at `GET /openapi.json`. The server listens on `127.0.0.1` unless `HOST` says otherwise. It speaks plain HTTP, so a server reachable from outside needs TLS in front of it. `pnpm db:import` reads the JSON files that older versions kept in `apps/server/.data/`.
 
 ---
 
@@ -37,7 +37,8 @@ Agents answer through Claude Code or Codex if you are signed in to them on this 
 - Every tool and every integration has tests (`@effect/vitest`), with external systems replaced by test layers.
 - Code, comments, commit messages and docs in **English**.
 - Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`).
-- `main` is protected: every change goes through a pull request with green CI (see `docs/adr/0005-ci-and-code-style.md`).
+- `main` is protected: every change goes through a pull request with green CI (see `docs/adr/0005-ci-and-code-style.md`). The pull request title becomes the commit on `main`, so it follows the same format; releases are built from these titles (ADR 0027).
+- Contributions are licensed under the [AGPL-3.0](LICENSE), like the rest of the project. There is no CLA.
 
 ---
 
@@ -53,7 +54,7 @@ Rules for AI coding assistants on this project:
 6. **Respect the product principles** (section 2 of [docs/architecture.md](docs/architecture.md)), especially: agents never bypass domain services, numbers come from SQL, risky tools require approval.
 7. **Record decisions.** Any significant architectural choice gets an ADR in `docs/adr/`. Update `docs/architecture.md`, `docs/domain.md`, `docs/roadmap.md` and the README when they become outdated.
 8. **Provide copy-paste-ready code.** Complete files or exact diffs, not fragments with "...rest of the code".
-9. **Communication:** talk to the maintainer in Russian; keep code, comments and docs in English.
+9. **Communication:** talk to the person you work with in the language they write in; keep code, comments and docs in English.
 10. **Say what you did not verify.** If something was not run or tested, state it explicitly.
 
 ### Prompt template for new tasks
