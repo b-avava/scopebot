@@ -9,11 +9,11 @@ import {
   widensPolicy
 } from "../renderer/src/settingsSummary.ts"
 
-const settings = defaultSettings({ name: "Nino", job: "Sales", color: "#000", shape: "circle", face: "neutral" })
+const settings = defaultSettings({ name: "Nino", job: "Sales", color: "#000", role: "sales" })
 
 describe("settings summaries", () => {
   it("counts what the employee may do", () => {
-    assert.strictEqual(permissionsSummary(settings.permissions), "Alone: 1 · Asks: 4 · Never: 1")
+    assert.strictEqual(permissionsSummary(settings.permissions), "Alone: 0 · Asks: 5 · Never: 1")
   })
 
   it("describes limits", () => {

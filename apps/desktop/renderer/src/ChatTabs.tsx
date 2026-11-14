@@ -36,7 +36,7 @@ const RenameField = ({
         if (event.key === "Enter") finish()
         if (event.key === "Escape") onDone(null)
       }}
-      className="h-8 w-36 rounded-lg border bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-8 w-36 rounded-control-sm border bg-field px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
     />
   )
 }
@@ -65,7 +65,7 @@ export const ChatTabs = ({ tabs, activeId, onSelect, onCreate, onRename, onClose
           ) : (
             <div
               key={tab.id}
-              className={`group flex h-8 max-w-48 shrink-0 items-center rounded-lg transition-colors duration-150 ${
+              className={`group flex h-8 max-w-48 shrink-0 items-center rounded-control-sm transition-colors duration-150 ${
                 tab.id === activeId ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60"
               }`}
             >
@@ -76,7 +76,7 @@ export const ChatTabs = ({ tabs, activeId, onSelect, onCreate, onRename, onClose
                 title="Double-click to rename"
                 onClick={() => onSelect(tab.id)}
                 onDoubleClick={() => setRenaming(tab.id)}
-                className={`h-full min-w-0 truncate rounded-lg pl-2.5 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`h-full min-w-0 truncate rounded-control-sm pl-2.5 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   tabs.length > 1 ? "pr-1" : "pr-2.5"
                 }`}
               >
@@ -100,7 +100,7 @@ export const ChatTabs = ({ tabs, activeId, onSelect, onCreate, onRename, onClose
         type="button"
         aria-label="New chat"
         onClick={onCreate}
-        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex size-8 shrink-0 items-center justify-center rounded-control-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Plus className="size-4" />
       </button>

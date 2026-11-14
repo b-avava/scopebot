@@ -175,7 +175,7 @@ export function PromptInput({
     <form
       onSubmit={submit}
       className={cn(
-        "relative w-full rounded-2xl border border-border/80 bg-background p-2 transition-colors focus-within:border-foreground/25",
+        "relative w-full rounded-card border border-border/80 bg-field p-2 transition-colors focus-within:border-foreground/25",
         inline && "flex items-end gap-1",
         disabled && "opacity-60",
         className,
@@ -223,7 +223,7 @@ export function PromptInput({
                 size="icon"
                 disabled={disabled || loading}
                 aria-label="Add to prompt"
-                className="size-8 rounded-full"
+                className="size-8 rounded-control-sm"
               >
                 <motion.span
                   aria-hidden="true"
@@ -281,7 +281,7 @@ export function PromptInput({
             disabled={disabled || loading}
             className="min-w-0"
           >
-            <SelectTrigger className="h-8 w-auto max-w-52 rounded-xl border-0 bg-transparent px-2 py-0 text-xs hover:bg-muted focus-visible:ring-2">
+            <SelectTrigger className="h-8 w-auto max-w-52 rounded-control-sm border-0 bg-transparent px-2 py-0 text-xs hover:bg-muted focus-visible:ring-2">
               <span className="flex min-w-0 items-center gap-1.5">
                 {currentModel?.icon ? (
                   <span className="grid size-4 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3.5">
@@ -323,7 +323,7 @@ export function PromptInput({
           disabled={loading ? !onStop : !canSubmit}
           aria-label={loading ? "Stop generating" : "Send prompt"}
           onClick={loading ? onStop : undefined}
-          className={cn("ml-auto size-8 rounded-full", inline && "order-3")}
+          className={cn("ml-auto size-8 rounded-control-sm", inline && "order-3")}
         >
           <AnimatePresence initial={false} mode="popLayout">
             <motion.span

@@ -1,0 +1,26 @@
+{
+  "name": "@scope-bot/integrations",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@scope-bot/domain": "workspace:*",
+    "@whiskeysockets/baileys": "catalog:",
+    "effect": "catalog:",
+    "qrcode": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "@types/qrcode": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

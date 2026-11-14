@@ -1,0 +1,861 @@
+import {
+  ACTIVITY_PAGE_SIZE,
+  Activity,
+  ActivityEntry,
+  type ActivityPage,
+  type ActivityQuery,
+  Agent,
+  AgentAction,
+  AgentId,
+  AgentRule,
+  ApprovalRequest,
+  type BusinessId,
+  BusinessProfile,
+  ChatMessage,
+  Contact,
+  Conversation,
+  cursorOf,
+  Deal,
+  Department,
+  Escalation,
+  LastMessage,
+  MessageFeedback,
+  Pipeline,
+  ProviderPreferences,
+  parseCursor,
+  Service
+} from "@scope-bot/domain"
+import { Effect, Layer, Option, Schema } from "effect"
+import { SqlClient, type SqlError, type Statement } from "effect/sql"
+import { CurrentViewer, requireBusiness } from "./CurrentBusiness.ts"
+import { type ChannelChat, Store } from "./Store.ts"
+
+type Row = Record<string, unknown>
+
+const MAX_SEARCH_MESSAGES = 50
+
+const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value)
+
+const money = (value: unknown) => (value === null ? null : Number(value))
+
+const json = (value: unknown) => JSON.stringify(value)
+
+/** `%` and `_` in what someone typed are text, not wildcards. */
+const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, (character) => `\\${character}`)}%`
+
+const toDepartment = (row: Row) => ({ id: row.id, name: row.name, createdAt: iso(row.createdAt) })
+
+const toAgent = ({ businessId: _business, seq: _seq, ...row }: Row) => ({ ...row, createdAt: iso(row.createdAt) })
+
+const toContact = (row: Row) => ({
+  id: row.id,
+  kind: row.kind,
+  name: row.name,
+  channels: { phone: row.phone, whatsapp: row.whatsapp, telegram: row.telegram },
+  consent: { messages: row.consentMessages, marketing: row.consentMarketing },
+  companyId: row.companyId,
+  role: row.role,
+  ownerId: row.ownerId,
+  tags: row.tags,
+  language: row.language,
+  bestTime: row.bestTime,
+  source: row.source,
+  summary: row.summary,
+  createdAt: iso(row.createdAt)
+})
+
+const toPipeline = (row: Row) => ({ id: row.id, name: row.name, stages: row.stages, createdAt: iso(row.createdAt) })
+
+const toService = ({ businessId: _business, seq: _seq, minutes, ...row }: Row) => ({
+  ...row,
+  ...(typeof minutes === "number" ? { minutes } : {}),
+  price: money(row.price),
+  createdAt: iso(row.createdAt)
+})
+
+const toDeal = ({ businessId: _business, seq: _seq, ...row }: Row) => ({
+  ...row,
+  amount: money(row.amount),
+  createdAt: iso(row.createdAt),
+  stageChangedAt: iso(row.stageChangedAt),
+  closedAt: iso(row.closedAt)
+})
+
+const toActivity = ({ businessId: _business, seq: _seq, ...row }: Row) => ({ ...row, createdAt: iso(row.createdAt) })
+
+const toApproval = ({ businessId: _business, seq: _seq, ...row }: Row) => ({
+  ...row,
+  createdAt: iso(row.createdAt),
+  decidedAt: iso(row.decidedAt)
+})
+
+/** Optional fields are left out instead of null, as the domain schemas expect. */
+const present = (row: Row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== null))
+
+const toConversation = ({ businessId: _business, seq: _seq, channel, address, contactId, ownerId, ...row }: Row) => ({
+  ...row,
+  ...present({ channel, address, contactId, ownerId: ownerId ?? null }),
+  createdAt: iso(row.createdAt)
+})
+
+const toMessage = ({
+  businessId: _business,
+  seq: _seq,
+  images,
+  delivery,
+  externalId,
+  handoff,
+  appointment,
+  replaces,
+  cards,
+  ...row
+}: Row) => ({
+  ...row,
+  ...(images === null || images === undefined ? {} : { images }),
+  ...(cards === null || cards === undefined ? {} : { cards }),
+  ...(appointment === null || appointment === undefined ? {} : { appointment }),
+  ...present({
+    delivery: delivery ?? null,
+    externalId: externalId ?? null,
+    handoff: handoff ?? null,
+    replaces: replaces ?? null
+  }),
+  createdAt: iso(row.createdAt)
+})
+
+const toFeedback = ({ businessId: _business, ...row }: Row) => ({ ...row, createdAt: iso(row.createdAt) })
+
+const toRule = ({ businessId: _business, seq: _seq, ...row }: Row) => ({
+  ...row,
+  createdAt: iso(row.createdAt),
+  decidedAt: iso(row.decidedAt)
+})
+
+const toAction = ({
+  businessId: _business,
+  seq: _seq,
+  conversationId,
+  reason,
+  decidedBy,
+  replyId,
+  appointmentId,
+  ...row
+}: Row) => ({
+  ...row,
+  ...present({
+    conversationId: conversationId ?? null,
+    reason: reason ?? null,
+    decidedBy: decidedBy ?? null,
+    replyId: replyId ?? null,
+    appointmentId: appointmentId ?? null
+  }),
+  createdAt: iso(row.createdAt)
+})
+
+const actionRow = (
+  business: BusinessId,
+  { conversationId, reason, decidedBy, replyId, appointmentId, ...action }: AgentAction
+) => ({
+  ...action,
+  businessId: business,
+  conversationId: conversationId ?? null,
+  reason: reason ?? null,
+  decidedBy: decidedBy === undefined ? null : json(decidedBy),
+  replyId: replyId ?? null,
+  appointmentId: appointmentId ?? null
+})
+
+/** The same rules as `actionKind` in the domain, so the database can count by kind. */
+const KIND_OF = `CASE WHEN a.tool = 'handoff' THEN 'handoff'
+  WHEN a.tool IN ('calendar.free_times', 'calendar.schedule') THEN 'lookup'
+  WHEN a.tool LIKE 'calendar.%' THEN 'appointment' ELSE 'reply' END`
+
+/** An entry of the log, from a row of the actions with their chat, contact, person and trigger. */
+const toEntry = ({
+  chatId,
+  chatChannel,
+  chatContactId,
+  contactName,
+  personName,
+  triggerRole,
+  triggerText,
+  triggerAt,
+  waiting,
+  ...row
+}: Row) => ({
+  action: toAction(row),
+  chat:
+    chatId === null || chatId === undefined
+      ? null
+      : {
+          id: chatId,
+          channel: chatChannel ?? null,
+          contactId: chatContactId ?? null,
+          contactName: contactName ?? null,
+          personName: personName ?? null
+        },
+  trigger:
+    triggerRole === null || triggerRole === undefined
+      ? null
+      : { role: triggerRole, text: triggerText, createdAt: iso(triggerAt) },
+  waiting: waiting ?? null
+})
+
+const toEscalation = ({ businessId: _business, seq: _seq, ...row }: Row) => ({
+  ...row,
+  createdAt: iso(row.createdAt),
+  resolvedAt: iso(row.resolvedAt)
+})
+
+/** Rows are checked against the domain schema, so a bad row fails here and not deep in a service. */
+const reader = <S extends Schema.Top & { readonly DecodingServices: never }>(
+  schema: S,
+  toDomain: (row: Row) => unknown
+) => {
+  const decodeAll = Schema.decodeUnknownEffect(Schema.Array(schema))
+  return (rows: ReadonlyArray<Row>) => decodeAll(rows.map(toDomain)).pipe(Effect.orDie)
+}
+
+const readDepartments = reader(Department, toDepartment)
+const readAgents = reader(Agent, toAgent)
+const readContacts = reader(Contact, toContact)
+const readPipelines = reader(Pipeline, toPipeline)
+const readServices = reader(Service, toService)
+const readDeals = reader(Deal, toDeal)
+const readActivities = reader(Activity, toActivity)
+const readApprovals = reader(ApprovalRequest, toApproval)
+const readConversations = reader(Conversation, toConversation)
+const readMessages = reader(ChatMessage, toMessage)
+const readActions = reader(AgentAction, toAction)
+const readFeedback = reader(MessageFeedback, toFeedback)
+const readRules = reader(AgentRule, toRule)
+const readEntries = reader(ActivityEntry, toEntry)
+const readEscalations = reader(Escalation, toEscalation)
+const readLastMessages = reader(LastMessage, (row) => ({ ...row, createdAt: iso(row.createdAt) }))
+
+const decodeChannelChat = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    conversation: Conversation,
+    lastMessage: Schema.NullOr(ChatMessage),
+    drafts: Schema.Int,
+    handoff: Schema.NullOr(Schema.String),
+    lastCustomerAt: Schema.NullOr(Schema.String)
+  })
+)
+
+/** A row turned into JSON inside a query keeps its column names and its own date format. */
+const fromJsonRow = (value: Record<string, unknown>): Row => {
+  const row = Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
+      item
+    ])
+  )
+  return { ...row, createdAt: new Date(String(row.createdAt)).toISOString() }
+}
+
+const readChannelChats = (rows: ReadonlyArray<Row>) =>
+  Effect.forEach(rows, ({ lastMessage, drafts, handoff, lastCustomerAt, ...row }) =>
+    decodeChannelChat({
+      conversation: toConversation(row),
+      lastMessage:
+        lastMessage === null || lastMessage === undefined
+          ? null
+          : toMessage(fromJsonRow(lastMessage as Record<string, unknown>)),
+      drafts,
+      handoff: handoff ?? null,
+      lastCustomerAt: lastCustomerAt instanceof Date ? lastCustomerAt.toISOString() : null
+    })
+  ).pipe(
+    Effect.map(
+      (chats): ReadonlyArray<ChannelChat> =>
+        [...chats].sort((a, b) =>
+          (b.lastMessage?.createdAt ?? b.conversation.createdAt).localeCompare(
+            a.lastMessage?.createdAt ?? a.conversation.createdAt
+          )
+        )
+    ),
+    Effect.orDie
+  )
+
+/** A page of the log from its entries, whether more follow, and the counted rows of `activityCounts`. */
+const pageOf = (entries: ReadonlyArray<ActivityEntry>, more: boolean, rows: ReadonlyArray<Row>): ActivityPage => {
+  const of = (facet: string) => rows.filter((row) => row.facet === facet)
+  const count = (facet: string, name: string) => Number(of(facet).find((row) => row.name === name)?.n ?? 0)
+  const failedOn = new Map(of("day-failed").map((row) => [String(row.name), Number(row.n)]))
+  const last = entries.at(-1)
+  return {
+    entries,
+    counts: {
+      total: count("total", ""),
+      agents: of("agent").map((row) => ({ agentId: AgentId.make(String(row.name)), count: Number(row.n) })),
+      kinds: {
+        reply: count("kind", "reply"),
+        appointment: count("kind", "appointment"),
+        lookup: count("kind", "lookup"),
+        handoff: count("kind", "handoff"),
+        failed: count("kind", "failed")
+      }
+    },
+    days: of("day")
+      .map((row) => ({ day: String(row.name), total: Number(row.n), failed: failedOn.get(String(row.name)) ?? 0 }))
+      .sort((a, b) => b.day.localeCompare(a.day)),
+    next: more && last !== undefined ? cursorOf(last.action) : null
+  }
+}
+
+const decodeBusiness = Schema.decodeUnknownEffect(BusinessProfile)
+const decodePreferences = Schema.decodeUnknownEffect(ProviderPreferences)
+
+const first = <A>(items: ReadonlyArray<A>) => Option.fromNullishOr(items[0])
+
+const agentRow = (business: BusinessId, agent: Agent) => ({
+  businessId: business,
+  id: agent.id,
+  name: agent.name,
+  job: agent.job,
+  sign: agent.sign,
+  role: agent.role,
+  departmentId: agent.departmentId,
+  color: agent.color,
+  tone: agent.tone,
+  instructions: agent.instructions,
+  provider: agent.provider,
+  model: agent.model,
+  reasoning: agent.reasoning,
+  backupModels: json(agent.backupModels),
+  active: agent.active,
+  permissions: json(agent.permissions),
+  limits: json(agent.limits),
+  hours: json(agent.hours),
+  escalation: json(agent.escalation),
+  pinned: agent.pinned,
+  createdAt: agent.createdAt
+})
+
+const contactRow = (business: BusinessId, contact: Contact) => ({
+  businessId: business,
+  id: contact.id,
+  kind: contact.kind,
+  name: contact.name,
+  phone: contact.channels.phone,
+  whatsapp: contact.channels.whatsapp,
+  telegram: contact.channels.telegram,
+  consentMessages: contact.consent.messages,
+  consentMarketing: contact.consent.marketing,
+  companyId: contact.companyId,
+  role: contact.role,
+  ownerId: contact.ownerId,
+  tags: json(contact.tags),
+  language: contact.language,
+  bestTime: contact.bestTime,
+  source: contact.source,
+  summary: contact.summary === null ? null : json(contact.summary),
+  createdAt: contact.createdAt
+})
+
+const serviceRow = (business: BusinessId, { sellerIds: _sellers, ...service }: Service) => ({
+  ...service,
+  minutes: service.minutes ?? null,
+  businessId: business,
+  packages: json(service.packages)
+})
+
+const dealRow = (business: BusinessId, { serviceIds: _services, ...deal }: Deal) => ({ ...deal, businessId: business })
+
+const messageRow = (
+  business: BusinessId,
+  { images, delivery, externalId, handoff, appointment, replaces, cards, ...message }: ChatMessage
+) => ({
+  ...message,
+  businessId: business,
+  images: images === undefined ? null : json(images),
+  delivery: delivery ?? null,
+  externalId: externalId ?? null,
+  handoff: handoff ?? null,
+  appointment: appointment === undefined ? null : json(appointment),
+  replaces: replaces ?? null,
+  cards: cards === undefined ? null : json(cards)
+})
+
+const ruleRow = (business: BusinessId, { suggestedBy, decidedBy, ...rule }: AgentRule) => ({
+  ...rule,
+  businessId: business,
+  suggestedBy: suggestedBy === null ? null : json(suggestedBy),
+  decidedBy: decidedBy === null ? null : json(decidedBy)
+})
+
+const conversationRow = (
+  business: BusinessId,
+  { channel, address, contactId, ownerId, ...conversation }: Conversation
+) => ({
+  ...conversation,
+  businessId: business,
+  channel: channel ?? null,
+  address: address ?? null,
+  contactId: contactId ?? null,
+  ownerId: ownerId ?? null
+})
+
+const makeStore = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+
+  /** Everything below runs inside the current business, and storage failures are bugs, not user errors. */
+  const scoped = <A>(query: (business: BusinessId) => Effect.Effect<A, SqlError.SqlError>) =>
+    requireBusiness.pipe(Effect.flatMap(query), Effect.orDie)
+
+  /** Tabs this person may see, as a condition on conversations named `c`. Chats with customers are for everyone. */
+  const seen = CurrentViewer.pipe(
+    Effect.map((viewer) =>
+      viewer === null
+        ? sql`TRUE`
+        : sql`(c.channel IS NOT NULL OR (c.owner_id IS NULL AND ${viewer.seesShared}) OR c.owner_id = ${viewer.userId})`
+    )
+  )
+
+  const write = <A>(query: (business: BusinessId) => Effect.Effect<A, SqlError.SqlError>) =>
+    scoped(query).pipe(Effect.asVoid)
+
+  const atomically = <A>(query: (business: BusinessId) => Effect.Effect<A, SqlError.SqlError>) =>
+    scoped((business) => sql.withTransaction(query(business))).pipe(Effect.asVoid)
+
+  const upsert = (table: string, row: Record<string, never> | object) => {
+    const values = row as Record<string, string | number | boolean | null>
+    return sql`INSERT INTO ${sql(table)} ${sql.insert(values)}
+      ON CONFLICT (business_id, id) DO UPDATE SET ${sql.update(values, ["businessId", "id"])}`
+  }
+
+  /** The actions of the period that this person may see and that match the search, as `a`, with `c` and `ct`. */
+  const activitySource = sql`FROM agent_actions a
+    LEFT JOIN conversations c ON c.business_id = a.business_id AND c.id = a.conversation_id
+    LEFT JOIN contacts ct ON ct.business_id = c.business_id AND ct.id = c.contact_id`
+
+  const activityScope = (business: BusinessId, query: ActivityQuery, visible: Statement.Fragment) => {
+    const search = query.search?.trim() ?? ""
+    const pattern = search === "" ? null : likePattern(search)
+    return sql`a.business_id = ${business} AND a.created_at >= ${query.from}::timestamptz
+      AND (c.id IS NULL OR ${visible})
+      AND (${pattern}::text IS NULL OR a.summary ILIKE ${pattern} OR a.reason ILIKE ${pattern} OR ct.name ILIKE ${pattern})`
+  }
+
+  const kindOf = sql.literal(KIND_OF)
+
+  const activityFilters = (query: ActivityQuery) => ({
+    agent: query.agentId === undefined ? sql`TRUE` : sql`a.agent_id = ${query.agentId}`,
+    filter:
+      query.filter === undefined
+        ? sql`TRUE`
+        : query.filter === "failed"
+          ? sql`a.status = 'failed'`
+          : sql`${kindOf} = ${query.filter}`
+  })
+
+  const activityEntries = (business: BusinessId, query: ActivityQuery, visible: Statement.Fragment) => {
+    const { agent, filter } = activityFilters(query)
+    const cursor = query.after === undefined ? null : parseCursor(query.after)
+    const after =
+      cursor === null ? sql`TRUE` : sql`(a.created_at, a.id) < (${cursor.createdAt}::timestamptz, ${cursor.id})`
+    // What waits is read as it is now: the draft, the appointment, or the chat a person has.
+    return sql<Row>`SELECT a.*, c.id AS chat_id, c.channel AS chat_channel, c.contact_id AS chat_contact_id,
+        ct.name AS contact_name, u.name AS person_name,
+        m.role AS trigger_role, m.text AS trigger_text, m.created_at AS trigger_at,
+        CASE
+          WHEN EXISTS (SELECT 1 FROM messages r
+            WHERE r.business_id = a.business_id AND r.id = a.reply_id AND r.delivery = 'draft') THEN 'draft'
+          WHEN EXISTS (SELECT 1 FROM appointments p
+            WHERE p.business_id = a.business_id AND p.id = a.appointment_id AND p.status = 'pending') THEN 'pending'
+          WHEN a.tool = 'handoff'
+            AND EXISTS (SELECT 1 FROM escalations e WHERE e.business_id = a.business_id
+              AND e.conversation_id = a.conversation_id AND e.resolved_at IS NULL AND e.created_at <= a.created_at)
+            AND NOT EXISTS (SELECT 1 FROM agent_actions later WHERE later.business_id = a.business_id
+              AND later.conversation_id = a.conversation_id AND later.tool = 'handoff'
+              AND later.created_at > a.created_at) THEN 'with-person'
+        END AS waiting
+      ${activitySource}
+      LEFT JOIN users u ON u.id = c.owner_id AND u.business_id = c.business_id
+      LEFT JOIN messages m ON m.business_id = a.business_id AND m.id = a.source_message_id
+      WHERE ${activityScope(business, query, visible)} AND ${agent} AND ${filter} AND ${after}
+      ORDER BY a.created_at DESC, a.id DESC LIMIT ${ACTIVITY_PAGE_SIZE + 1}`
+  }
+
+  /** Every count of the log in one pass. Each row is a facet, a name and a number. */
+  const activityCounts = (business: BusinessId, query: ActivityQuery, visible: Statement.Fragment) => {
+    const { agent, filter } = activityFilters(query)
+    return sql<Row>`WITH f AS (
+        SELECT a.agent_id, a.status, ${kindOf} AS kind,
+          (a.created_at AT TIME ZONE ${query.timeZone})::date::text AS day,
+          ${agent} AS of_agent, ${filter} AS of_filter
+        ${activitySource} WHERE ${activityScope(business, query, visible)}
+      )
+      SELECT 'agent' AS facet, agent_id AS name, count(*)::int AS n FROM f WHERE of_filter GROUP BY agent_id
+      UNION ALL SELECT 'kind', kind, count(*)::int FROM f WHERE of_agent GROUP BY kind
+      UNION ALL SELECT 'kind', 'failed', count(*)::int FROM f WHERE of_agent AND status = 'failed'
+      UNION ALL SELECT 'total', '', count(*)::int FROM f WHERE of_filter
+      UNION ALL SELECT 'day', day, count(*)::int FROM f WHERE of_agent AND of_filter GROUP BY day
+      UNION ALL SELECT 'day-failed', day, count(*)::int FROM f
+        WHERE of_agent AND of_filter AND status = 'failed' GROUP BY day`
+  }
+
+  const selectPipelines = (business: BusinessId) =>
+    sql<Row>`SELECT p.*, COALESCE((
+        SELECT jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name, 'kind', s.kind, 'probability', s.probability)
+          ORDER BY s.position)
+        FROM stages s WHERE s.business_id = p.business_id AND s.pipeline_id = p.id
+      ), '[]') AS stages
+      FROM pipelines p WHERE p.business_id = ${business} ORDER BY p.seq`
+
+  const selectServices = (business: BusinessId, id: string | null) =>
+    sql<Row>`SELECT s.*, COALESCE((
+        SELECT jsonb_agg(x.agent_id ORDER BY x.position)
+        FROM service_sellers x WHERE x.business_id = s.business_id AND x.service_id = s.id
+      ), '[]') AS seller_ids
+      FROM services s WHERE s.business_id = ${business} AND (${id}::text IS NULL OR s.id = ${id}) ORDER BY s.seq`
+
+  const selectDeals = (business: BusinessId, id: string | null) =>
+    sql<Row>`SELECT d.*, COALESCE((
+        SELECT jsonb_agg(x.service_id ORDER BY x.position)
+        FROM deal_services x WHERE x.business_id = d.business_id AND x.deal_id = d.id
+      ), '[]') AS service_ids
+      FROM deals d WHERE d.business_id = ${business} AND (${id}::text IS NULL OR d.id = ${id}) ORDER BY d.seq`
+
+  return Store.of({
+    business: scoped(
+      (business) => sql<Row>`SELECT name, address, phone, opening_hours, about, currency
+        FROM businesses WHERE id = ${business}`
+    ).pipe(
+      Effect.flatMap((rows) => decodeBusiness(rows[0])),
+      Effect.orDie
+    ),
+    saveBusiness: (profile) =>
+      write((business) => sql`UPDATE businesses SET ${sql.update(profile)} WHERE id = ${business}`),
+    agents: scoped((business) => sql<Row>`SELECT * FROM agents WHERE business_id = ${business} ORDER BY seq`).pipe(
+      Effect.flatMap(readAgents)
+    ),
+    findAgent: (id) =>
+      scoped((business) => sql<Row>`SELECT * FROM agents WHERE business_id = ${business} AND id = ${id}`).pipe(
+        Effect.flatMap(readAgents),
+        Effect.map(first)
+      ),
+    saveAgent: (agent) => write((business) => upsert("agents", agentRow(business, agent))),
+    removeAgent: (id) => write((business) => sql`DELETE FROM agents WHERE business_id = ${business} AND id = ${id}`),
+    contacts: scoped((business) => sql<Row>`SELECT * FROM contacts WHERE business_id = ${business} ORDER BY seq`).pipe(
+      Effect.flatMap(readContacts)
+    ),
+    findContact: (id) =>
+      scoped((business) => sql<Row>`SELECT * FROM contacts WHERE business_id = ${business} AND id = ${id}`).pipe(
+        Effect.flatMap(readContacts),
+        Effect.map(first)
+      ),
+    saveContact: (contact) => write((business) => upsert("contacts", contactRow(business, contact))),
+    removeContact: (id) =>
+      atomically((business) =>
+        // What belongs to a deal stays with the deal, and the foreign key unlinks it.
+        sql`DELETE FROM activities WHERE business_id = ${business} AND contact_id = ${id} AND deal_id IS NULL`.pipe(
+          Effect.andThen(sql`DELETE FROM contacts WHERE business_id = ${business} AND id = ${id}`)
+        )
+      ),
+    departments: scoped(
+      (business) => sql<Row>`SELECT * FROM departments WHERE business_id = ${business} ORDER BY seq`
+    ).pipe(Effect.flatMap(readDepartments)),
+    findDepartment: (id) =>
+      scoped((business) => sql<Row>`SELECT * FROM departments WHERE business_id = ${business} AND id = ${id}`).pipe(
+        Effect.flatMap(readDepartments),
+        Effect.map(first)
+      ),
+    saveDepartment: (department) => write((business) => upsert("departments", { ...department, businessId: business })),
+    removeDepartment: (id) =>
+      write((business) => sql`DELETE FROM departments WHERE business_id = ${business} AND id = ${id}`),
+    pipelines: scoped(selectPipelines).pipe(Effect.flatMap(readPipelines)),
+    savePipeline: ({ stages, ...pipeline }) =>
+      atomically((business) =>
+        Effect.gen(function* () {
+          yield* upsert("pipelines", { ...pipeline, businessId: business })
+          yield* Effect.forEach(stages, (stage, position) =>
+            upsert("stages", { ...stage, businessId: business, pipelineId: pipeline.id, position })
+          )
+          yield* sql`DELETE FROM stages WHERE business_id = ${business} AND pipeline_id = ${pipeline.id}
+            AND id <> ALL(SELECT jsonb_array_elements_text(${json(stages.map((stage) => stage.id))}::jsonb))`
+        })
+      ),
+    services: scoped((business) => selectServices(business, null)).pipe(Effect.flatMap(readServices)),
+    findService: (id) =>
+      scoped((business) => selectServices(business, id)).pipe(Effect.flatMap(readServices), Effect.map(first)),
+    saveService: (service) =>
+      atomically((business) =>
+        Effect.gen(function* () {
+          yield* upsert("services", serviceRow(business, service))
+          yield* sql`DELETE FROM service_sellers WHERE business_id = ${business} AND service_id = ${service.id}`
+          yield* Effect.forEach(
+            service.sellerIds,
+            (agentId, position) =>
+              sql`INSERT INTO service_sellers ${sql.insert({
+                businessId: business,
+                serviceId: service.id,
+                agentId,
+                position
+              })}`
+          )
+        })
+      ),
+    removeService: (id) =>
+      write((business) => sql`DELETE FROM services WHERE business_id = ${business} AND id = ${id}`),
+    activities: scoped(
+      (business) => sql<Row>`SELECT * FROM activities WHERE business_id = ${business} ORDER BY seq`
+    ).pipe(Effect.flatMap(readActivities)),
+    findActivity: (id) =>
+      scoped((business) => sql<Row>`SELECT * FROM activities WHERE business_id = ${business} AND id = ${id}`).pipe(
+        Effect.flatMap(readActivities),
+        Effect.map(first)
+      ),
+    saveActivity: (activity) => write((business) => upsert("activities", { ...activity, businessId: business })),
+    removeActivity: (id) =>
+      write((business) => sql`DELETE FROM activities WHERE business_id = ${business} AND id = ${id}`),
+    approvals: scoped(
+      (business) => sql<Row>`SELECT * FROM approvals WHERE business_id = ${business} ORDER BY seq`
+    ).pipe(Effect.flatMap(readApprovals)),
+    findApproval: (id) =>
+      scoped((business) => sql<Row>`SELECT * FROM approvals WHERE business_id = ${business} AND id = ${id}`).pipe(
+        Effect.flatMap(readApprovals),
+        Effect.map(first)
+      ),
+    saveApproval: (approval) => write((business) => upsert("approvals", { ...approval, businessId: business })),
+    deals: scoped((business) => selectDeals(business, null)).pipe(Effect.flatMap(readDeals)),
+    findDeal: (id) =>
+      scoped((business) => selectDeals(business, id)).pipe(Effect.flatMap(readDeals), Effect.map(first)),
+    saveDeal: (deal) =>
+      atomically((business) =>
+        Effect.gen(function* () {
+          yield* upsert("deals", dealRow(business, deal))
+          yield* sql`DELETE FROM deal_services WHERE business_id = ${business} AND deal_id = ${deal.id}`
+          yield* Effect.forEach(
+            deal.serviceIds,
+            (serviceId, position) =>
+              sql`INSERT INTO deal_services ${sql.insert({
+                businessId: business,
+                dealId: deal.id,
+                serviceId,
+                position
+              })}`
+          )
+        })
+      ),
+    removeDeal: (id) => write((business) => sql`DELETE FROM deals WHERE business_id = ${business} AND id = ${id}`),
+    conversations: (agentId) =>
+      seen.pipe(
+        Effect.flatMap((visible) =>
+          scoped(
+            (business) => sql<Row>`SELECT * FROM conversations c
+              WHERE c.business_id = ${business} AND c.agent_id = ${agentId} AND ${visible} ORDER BY c.seq`
+          )
+        ),
+        Effect.flatMap(readConversations)
+      ),
+    findConversation: (id) =>
+      seen.pipe(
+        Effect.flatMap((visible) =>
+          scoped(
+            (business) => sql<Row>`SELECT * FROM conversations c
+              WHERE c.business_id = ${business} AND c.id = ${id} AND ${visible}`
+          )
+        ),
+        Effect.flatMap(readConversations),
+        Effect.map(first)
+      ),
+    saveConversation: (conversation) =>
+      write((business) => upsert("conversations", conversationRow(business, conversation))),
+    channelChats: (channel) =>
+      scoped(
+        (business) => sql<Row>`SELECT c.*,
+            (SELECT to_jsonb(m) FROM messages m
+              WHERE m.business_id = c.business_id AND m.conversation_id = c.id AND m.role <> 'note'
+              ORDER BY m.seq DESC LIMIT 1) AS last_message,
+            (SELECT count(*) FROM messages m
+              WHERE m.business_id = c.business_id AND m.conversation_id = c.id AND m.delivery = 'draft')::int AS drafts,
+            (SELECT e.reason FROM escalations e
+              WHERE e.business_id = c.business_id AND e.conversation_id = c.id AND e.resolved_at IS NULL
+              ORDER BY e.seq DESC LIMIT 1) AS handoff,
+            (SELECT max(m.created_at) FROM messages m
+              WHERE m.business_id = c.business_id AND m.conversation_id = c.id AND m.role = 'customer') AS last_customer_at
+          FROM conversations c WHERE c.business_id = ${business} AND c.channel = ${channel}`
+      ).pipe(Effect.flatMap(readChannelChats)),
+    findChannelConversation: (channel, address) =>
+      scoped(
+        (business) => sql<Row>`SELECT * FROM conversations
+          WHERE business_id = ${business} AND channel = ${channel} AND address = ${address}`
+      ).pipe(Effect.flatMap(readConversations), Effect.map(first)),
+    conversationMessages: (id) =>
+      scoped(
+        (business) =>
+          sql<Row>`SELECT * FROM messages WHERE business_id = ${business} AND conversation_id = ${id} ORDER BY seq`
+      ).pipe(Effect.flatMap(readMessages)),
+    findMessage: (id) =>
+      scoped((business) => sql<Row>`SELECT * FROM messages WHERE business_id = ${business} AND id = ${id}`).pipe(
+        Effect.flatMap(readMessages),
+        Effect.map(first)
+      ),
+    findExternalMessage: (externalId) =>
+      scoped(
+        (business) => sql<Row>`SELECT * FROM messages WHERE business_id = ${business} AND external_id = ${externalId}`
+      ).pipe(Effect.flatMap(readMessages), Effect.map(first)),
+    saveMessage: (message) =>
+      write((business) => {
+        const { businessId: _business, id, ...values } = messageRow(business, message)
+        return sql`UPDATE messages SET ${sql.update(values)} WHERE business_id = ${business} AND id = ${id}`
+      }),
+    removeConversation: (id) =>
+      write((business) => sql`DELETE FROM conversations WHERE business_id = ${business} AND id = ${id}`),
+    messages: (agentId) =>
+      scoped(
+        (business) =>
+          sql<Row>`SELECT * FROM messages WHERE business_id = ${business} AND agent_id = ${agentId} ORDER BY seq`
+      ).pipe(Effect.flatMap(readMessages)),
+    appendMessage: (message) =>
+      write((business) => {
+        const values = messageRow(business, message)
+        return sql`INSERT INTO messages ${sql.insert(values)}`
+      }),
+    lastMessages: seen.pipe(
+      Effect.flatMap((visible) =>
+        scoped(
+          (business) => sql<Row>`SELECT DISTINCT ON (m.agent_id) m.agent_id, m.text, m.created_at
+            FROM messages m JOIN conversations c ON c.business_id = m.business_id AND c.id = m.conversation_id
+            WHERE m.business_id = ${business} AND m.role <> 'note' AND ${visible}
+              AND (m.delivery IS NULL OR m.delivery IN ('sending', 'sent')) ORDER BY m.agent_id, m.seq DESC`
+        )
+      ),
+      Effect.flatMap(readLastMessages)
+    ),
+    searchMessages: (query) =>
+      seen.pipe(
+        Effect.flatMap((visible) =>
+          scoped(
+            // Chats with customers on a channel are not tabs of the employee, so search leaves them out.
+            (business) => sql<Row>`WITH said AS (
+            SELECT m.* FROM messages m JOIN conversations c ON c.business_id = m.business_id AND c.id = m.conversation_id
+            WHERE m.business_id = ${business} AND m.role <> 'note' AND c.channel IS NULL AND ${visible}
+          )
+          SELECT id, agent_id, conversation_id, role, text, created_at FROM (
+            (SELECT DISTINCT ON (agent_id) * FROM said WHERE text <> '' ORDER BY agent_id, seq DESC)
+            UNION
+            (SELECT * FROM said WHERE ${query} <> '' AND text ILIKE ${likePattern(query)}
+              ORDER BY seq DESC LIMIT ${MAX_SEARCH_MESSAGES})
+          ) found ORDER BY seq`
+          )
+        ),
+        Effect.flatMap(readMessages)
+      ),
+    actions: (agentId) =>
+      scoped(
+        (business) => sql<Row>`SELECT * FROM agent_actions
+          WHERE business_id = ${business} AND agent_id = ${agentId} ORDER BY seq`
+      ).pipe(Effect.flatMap(readActions)),
+    appendAction: (action) =>
+      write((business) => sql`INSERT INTO agent_actions ${sql.insert(actionRow(business, action))}`),
+    activityLog: (query) =>
+      seen.pipe(
+        Effect.flatMap((visible) =>
+          scoped((business) =>
+            Effect.all([activityEntries(business, query, visible), activityCounts(business, query, visible)])
+          )
+        ),
+        Effect.flatMap(([rows, counts]) =>
+          readEntries(rows.slice(0, ACTIVITY_PAGE_SIZE)).pipe(
+            Effect.map((entries): ActivityPage => pageOf(entries, rows.length > ACTIVITY_PAGE_SIZE, counts))
+          )
+        )
+      ),
+    conversationActions: (id) =>
+      scoped(
+        (business) => sql<Row>`SELECT * FROM agent_actions
+          WHERE business_id = ${business} AND conversation_id = ${id} ORDER BY created_at, seq`
+      ).pipe(Effect.flatMap(readActions)),
+    saveFeedback: (feedback) =>
+      write((business) => {
+        const values = { ...feedback, businessId: business, reasons: json(feedback.reasons) }
+        return sql`INSERT INTO message_feedback ${sql.insert(values)}
+          ON CONFLICT (business_id, message_id, user_id) DO UPDATE SET ${sql.update(values, [
+            "businessId",
+            "messageId",
+            "userId"
+          ])}`
+      }),
+    feedbackOf: (conversationId, userId) =>
+      scoped(
+        (business) => sql<Row>`SELECT * FROM message_feedback
+          WHERE business_id = ${business} AND conversation_id = ${conversationId} AND user_id = ${userId}
+          ORDER BY created_at`
+      ).pipe(Effect.flatMap(readFeedback)),
+    rules: (agentId) =>
+      scoped(
+        (business) => sql<Row>`SELECT * FROM agent_rules
+          WHERE business_id = ${business} AND agent_id = ${agentId} ORDER BY seq`
+      ).pipe(Effect.flatMap(readRules)),
+    findRule: (id) =>
+      scoped((business) => sql<Row>`SELECT * FROM agent_rules WHERE business_id = ${business} AND id = ${id}`).pipe(
+        Effect.flatMap(readRules),
+        Effect.map(first)
+      ),
+    saveRule: (rule) => write((business) => upsert("agent_rules", ruleRow(business, rule))),
+    removeRule: (id) =>
+      write((business) => sql`DELETE FROM agent_rules WHERE business_id = ${business} AND id = ${id}`),
+    actionTurn: (id) =>
+      seen.pipe(
+        Effect.flatMap((visible) =>
+          scoped((business) =>
+            Effect.gen(function* () {
+              const found = yield* sql<Row>`SELECT a.* FROM agent_actions a
+                LEFT JOIN conversations c ON c.business_id = a.business_id AND c.id = a.conversation_id
+                WHERE a.business_id = ${business} AND a.id = ${id} AND (c.id IS NULL OR ${visible})`
+              const action = found[0]
+              if (action === undefined) return null
+              const chat = (action.conversationId ?? null) as string | null
+              // A turn runs from the customer's message before the action up to their next one.
+              return yield* sql<Row>`WITH turn AS (
+                  SELECT (SELECT max(m.created_at) FROM messages m
+                    WHERE m.business_id = ${business} AND m.conversation_id = ${chat} AND m.role = 'customer'
+                      AND m.created_at <= ${action.createdAt as Date}) AS start
+                )
+                SELECT a.* FROM agent_actions a, turn
+                WHERE a.business_id = ${business} AND (a.source_message_id = ${action.sourceMessageId as string}
+                  OR (turn.start IS NOT NULL AND a.conversation_id = ${chat} AND a.created_at >= turn.start
+                    AND a.created_at < COALESCE((SELECT min(m.created_at) FROM messages m
+                      WHERE m.business_id = ${business} AND m.conversation_id = ${chat} AND m.role = 'customer'
+                        AND m.created_at > turn.start), 'infinity')))
+                ORDER BY a.created_at, a.seq`
+            })
+          )
+        ),
+        Effect.flatMap((rows) =>
+          rows === null ? Effect.succeed(Option.none()) : readActions(rows).pipe(Effect.map(Option.some))
+        )
+      ),
+    openEscalation: (conversationId) =>
+      scoped(
+        (business) => sql<Row>`SELECT * FROM escalations
+          WHERE business_id = ${business} AND conversation_id = ${conversationId} AND resolved_at IS NULL LIMIT 1`
+      ).pipe(Effect.flatMap(readEscalations), Effect.map(first)),
+    openEscalations: scoped(
+      (business) => sql<Row>`SELECT * FROM escalations
+        WHERE business_id = ${business} AND resolved_at IS NULL ORDER BY seq`
+    ).pipe(Effect.flatMap(readEscalations)),
+    appendEscalation: (escalation) =>
+      write((business) => {
+        const values = { ...escalation, businessId: business }
+        return sql`INSERT INTO escalations ${sql.insert(values)}`
+      }),
+    resolveEscalation: (conversationId, resolvedAt) =>
+      write(
+        (business) => sql`UPDATE escalations SET resolved_at = ${resolvedAt}
+          WHERE business_id = ${business} AND conversation_id = ${conversationId} AND resolved_at IS NULL`
+      ),
+    preferences: scoped((business) => sql<Row>`SELECT preferences FROM businesses WHERE id = ${business}`).pipe(
+      Effect.flatMap((rows) => decodePreferences(rows[0]?.preferences)),
+      Effect.orDie
+    ),
+    savePreferences: (preferences) =>
+      write((business) => sql`UPDATE businesses SET preferences = ${json(preferences)}::jsonb WHERE id = ${business}`)
+  })
+})
+
+/** The real storage. Every query is scoped by the current business. */
+export const pgStoreLayer = Layer.effect(Store, makeStore)

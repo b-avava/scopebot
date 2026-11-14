@@ -1,61 +1,45 @@
-import { type BusinessProfile, type BusinessService, emptyBusinessProfile } from "@scope-bot/domain"
+import { type BusinessProfile, emptyBusinessProfile } from "@scope-bot/domain"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
 import { Input } from "@scope-bot/ui/components/motion/input.tsx"
-import { Plus, X } from "lucide-react"
 import { useEffect, useState } from "react"
+import { BusinessFeatures } from "./BusinessFeatures.tsx"
+import { useCrm } from "./CrmContext.tsx"
+import { Tab } from "./CrmParts.tsx"
 import { errorMessage } from "./hooks.ts"
 import { TitleBar } from "./TitleBar.tsx"
 
-const inputClasses = { label: "px-0 text-[13px] text-muted-foreground", field: "rounded-xl" }
-
-/** A service row with a key that survives edits and removals of other rows. */
-interface ServiceRow extends BusinessService {
-  readonly key: string
-}
-
-interface Draft extends Omit<BusinessProfile, "services"> {
-  readonly services: ReadonlyArray<ServiceRow>
-}
-
-const toDraft = (profile: BusinessProfile): Draft => ({
-  ...profile,
-  services: profile.services.map((service) => ({ ...service, key: crypto.randomUUID() }))
-})
-
-const toProfile = (draft: Draft): BusinessProfile => ({
-  ...draft,
-  services: draft.services.map(({ name, price }) => ({ name, price }))
-})
+const inputClasses = { label: "px-0 text-[13px] text-muted-foreground" }
 
 export const BusinessScreen = () => {
+  const { reload } = useCrm()
   const [saved, setSaved] = useState<BusinessProfile>(emptyBusinessProfile)
-  const [draft, setDraft] = useState<Draft>(() => toDraft(emptyBusinessProfile))
+  const [draft, setDraft] = useState<BusinessProfile>(emptyBusinessProfile)
   const [status, setStatus] = useState<string | null>(null)
+  const [page, setPage] = useState<"profile" | "features">("profile")
 
   useEffect(() => {
     void window.scopeBot.getBusiness().then((result) => {
       if (result.ok) {
         setSaved(result.value)
-        setDraft(toDraft(result.value))
+        setDraft(result.value)
       } else {
         setStatus(errorMessage(result.error))
       }
     })
   }, [])
 
-  const change = (patch: Partial<Draft>) => {
+  const change = (patch: Partial<BusinessProfile>) => {
     setDraft({ ...draft, ...patch })
     setStatus(null)
   }
 
-  const changeService = (key: string, patch: Partial<BusinessService>) =>
-    change({ services: draft.services.map((service) => (service.key === key ? { ...service, ...patch } : service)) })
-
   const save = async () => {
-    const result = await window.scopeBot.saveBusiness(toProfile(draft))
+    const result = await window.scopeBot.saveBusiness(draft)
     if (result.ok) {
       setSaved(result.value)
       setStatus("Saved")
+      // Deals and services show the currency set here.
+      void reload()
     } else {
       setStatus(errorMessage(result.error))
     }
@@ -65,9 +49,19 @@ export const BusinessScreen = () => {
     <>
       <TitleBar>
         <span className="text-sm font-semibold">Business</span>
+        <div className="flex items-center gap-0.5 pl-2">
+          <Tab active={page === "profile"} onSelect={() => setPage("profile")}>
+            Profile
+          </Tab>
+          <Tab active={page === "features"} onSelect={() => setPage("features")}>
+            Features
+          </Tab>
+        </div>
       </TitleBar>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      {page === "features" && <BusinessFeatures businessName={saved.name} />}
+
+      <div className={page === "profile" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-[640px] flex-col gap-5 px-6 py-7">
             <p className="text-[13px] leading-[18px] text-muted-foreground">
@@ -101,63 +95,23 @@ export const BusinessScreen = () => {
                 rows={3}
                 value={draft.about}
                 onChange={(event) => change({ about: event.target.value })}
-                placeholder="Doctors, parking, how to prepare for a visit…"
-                className="resize-none rounded-xl border bg-background px-3 py-2.5 text-sm leading-5 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="Who you are, parking, how to get ready…"
+                className="resize-none rounded-control border bg-field px-3 py-2.5 text-sm leading-5 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
-            <section className="flex flex-col gap-3">
-              <h2 className="text-[13px] font-medium text-muted-foreground">Services and prices</h2>
-              {draft.services.map((service) => (
-                <div key={service.key} className="flex items-center gap-2">
-                  <Input
-                    aria-label="Service"
-                    placeholder="Cleaning"
-                    value={service.name}
-                    onChange={(name) => changeService(service.key, { name })}
-                    className="min-w-0 flex-[2]"
-                    classNames={{ field: "rounded-xl" }}
-                  />
-                  <Input
-                    aria-label="Price"
-                    placeholder="80 GEL"
-                    value={service.price}
-                    onChange={(price) => changeService(service.key, { price })}
-                    className="min-w-0 flex-1"
-                    classNames={{ field: "rounded-xl" }}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Remove service"
-                    onClick={() => change({ services: draft.services.filter((row) => row.key !== service.key) })}
-                  >
-                    <X className="size-4" />
-                  </Button>
-                </div>
-              ))}
-              <div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    change({ services: [...draft.services, { key: crypto.randomUUID(), name: "", price: "" }] })
-                  }
-                >
-                  <Plus className="size-4" />
-                  Add a service
-                </Button>
-              </div>
-            </section>
+            <Input
+              label="Currency"
+              placeholder="GEL"
+              value={draft.currency}
+              onChange={(currency) => change({ currency })}
+              classNames={inputClasses}
+            />
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-3 border-t px-6 py-3">
-          <Button
-            size="sm"
-            disabled={JSON.stringify(toProfile(draft)) === JSON.stringify(saved)}
-            onClick={() => void save()}
-          >
+          <Button size="sm" disabled={JSON.stringify(draft) === JSON.stringify(saved)} onClick={() => void save()}>
             Save
           </Button>
           {status !== null && (

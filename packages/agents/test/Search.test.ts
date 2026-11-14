@@ -11,8 +11,9 @@ import {
 import { searchEverything } from "../src/Search.ts"
 
 const agent = (id: string, name: string, pinned = false): Agent => ({
-  ...defaultSettings({ name, job: "Front desk", color: "#000", shape: "circle", face: "neutral" }),
+  ...defaultSettings({ name, job: "Front desk", color: "#000" }),
   id: AgentId.make(id),
+  role: null,
   pinned,
   createdAt: ""
 })

@@ -9,6 +9,7 @@
 :root {
   color-scheme: light;
   --background: #ffffff;
+  --field: #f6f6f6;
   --foreground: #0a0a0a;
   --sidebar: #fafafa;
   --card: #ffffff;
@@ -32,6 +33,7 @@
 .dark {
   color-scheme: dark;
   --background: #242424;
+  --field: #2d2d2d;
   --foreground: #ffffff;
   --sidebar: #0a0a0a;
   --card: #242424;
@@ -54,6 +56,7 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-field: var(--field);
   --color-foreground: var(--foreground);
   --color-sidebar: var(--sidebar);
   --color-card: var(--card);
@@ -73,11 +76,24 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --font-sans: "Google Sans Variable", "Segoe UI", system-ui, sans-serif;
+
+  /* Corner radius, see ADR 0003. Pills are only for things that are not controls. */
+  --radius-control: 12px;
+  --radius-control-sm: 10px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
 }
 
 @layer base {
   * {
     border-color: var(--border);
+  }
+
+  /* The list of a native select takes the field's text colour, so it needs its own background. */
+  option,
+  optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
   }
 
   :focus-visible {

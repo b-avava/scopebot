@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
     "start": "node --env-file-if-exists=../../.env src/main.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:import": "node --env-file-if-exists=../../.env src/importFile.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
@@ -14,6 +15,7 @@
     "@scope-bot/contracts": "workspace:*",
     "@scope-bot/db": "workspace:*",
     "@scope-bot/domain": "workspace:*",
+    "@scope-bot/integrations": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

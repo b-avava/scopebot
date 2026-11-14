@@ -14,6 +14,8 @@ export interface ChatTurn {
   readonly images?: ReadonlyArray<ChatImage>
   /** Written by a supervisor, not the customer. */
   readonly supervisor?: boolean
+  /** What the employee's tools returned, from the system. */
+  readonly tool?: boolean
 }
 
 export interface ChatRequest {
@@ -22,6 +24,11 @@ export interface ChatRequest {
   readonly reasoning: ReasoningEffort
   readonly system: string
   readonly turns: ReadonlyArray<ChatTurn>
+  /**
+   * Told the reply so far as it is written, when someone watches it (ADR 0025).
+   * A provider that cannot stream only answers at the end.
+   */
+  readonly onText?: (soFar: string) => Effect.Effect<void>
 }
 
 export interface ChatReply {

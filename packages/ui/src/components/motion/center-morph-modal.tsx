@@ -165,9 +165,10 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
+// 20px is --radius-panel. A var() here would stop the clip from animating.
 const CENTER_FOLDED_CLIP =
-  "inset(48% 48% 48% 48% round 30px)";
-const CENTER_OPEN_CLIP = "inset(0% 0% 0% 0% round 30px)";
+  "inset(48% 48% 48% 48% round 20px)";
+const CENTER_OPEN_CLIP = "inset(0% 0% 0% 0% round 20px)";
 
 // Complex clip-path strings can snap when a spring resolves its final distance.
 // Keep the radius constant so the whole duration reads as surface unfolding,
@@ -202,6 +203,8 @@ export function CenterMorphModalContent({
 
   useEffect(() => setMounted(true), []);
 
+  // Runs only when the modal opens or closes. The context changes on every
+  // render of a parent, and moving focus then would interrupt typing.
   useEffect(() => {
     if (!context.open) return;
 
@@ -212,6 +215,16 @@ export function CenterMorphModalContent({
       const [firstFocusable] = getFocusableElements(panelRef.current);
       (firstFocusable ?? panelRef.current)?.focus();
     });
+
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.getElementById(context.triggerId)?.focus();
+    };
+  }, [context.open, context.triggerId]);
+
+  useEffect(() => {
+    if (!context.open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && dismissible) {
@@ -240,12 +253,7 @@ export function CenterMorphModalContent({
     };
 
     window.addEventListener("keydown", onKeyDown);
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      document.getElementById(context.triggerId)?.focus();
-    };
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [context, dismissible]);
 
   if (!mounted) return null;
@@ -321,7 +329,7 @@ export function CenterMorphModalContent({
                         : CENTER_UNFOLD_TRANSITION
                     }
                     className={cn(
-                      "pointer-events-auto relative w-full max-w-[26rem] origin-center overflow-hidden rounded-[30px] border border-border bg-background will-change-[clip-path]",
+                      "pointer-events-auto relative w-full max-w-[26rem] origin-center overflow-hidden rounded-panel border border-border bg-background will-change-[clip-path]",
                       className,
                     )}
                   >
@@ -348,7 +356,7 @@ export function CenterMorphModalContent({
                           duration: reduce ? 0.12 : 0.2,
                           ease: EASE_OUT,
                         }}
-                        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-foreground/[0.05] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-control-sm bg-foreground/[0.05] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
                       </motion.button>

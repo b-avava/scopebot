@@ -1,4 +1,4 @@
-import type { Agent, LastMessage } from "@scope-bot/domain"
+import type { Agent, Department, LastMessage } from "@scope-bot/domain"
 import {
   AnimatedSidebar,
   AnimatedSidebarContent,
@@ -6,30 +6,32 @@ import {
   AnimatedSidebarGroup,
   AnimatedSidebarGroupContent,
   AnimatedSidebarGroupLabel,
-  AnimatedSidebarHeader,
   AnimatedSidebarMenu,
   AnimatedSidebarMenuButton,
   AnimatedSidebarMenuItem
 } from "@scope-bot/ui/components/motion/animated-sidebar.tsx"
 import { Button } from "@scope-bot/ui/components/motion/button/index.tsx"
-import { Building2, ChartColumn, Check, Moon, Pin, Plus, ScrollText, Search, Sun } from "lucide-react"
+import { Bot, FolderPlus, Moon, Pencil, Pin, Plus, Search, Sun, Trash2 } from "lucide-react"
 import { useCallback, useState } from "react"
 import type { ServerStatus, Theme } from "../../preload/bridge.ts"
-import { AgentMenu, type MenuPoint } from "./AgentMenu.tsx"
-import { Mascot } from "./Mascot.tsx"
+import { AgentMenu } from "./AgentMenu.tsx"
+import { EmployeeAvatar } from "./Avatar.tsx"
+import { Menu, type MenuPoint } from "./Menu.tsx"
 import { messageTime } from "./messageTime.ts"
+import { plainPreview } from "./plainPreview.ts"
 
 interface AppSidebarProps {
   readonly team: ReadonlyArray<Agent>
+  readonly departments: ReadonlyArray<Department>
   readonly lastMessages: ReadonlyArray<LastMessage>
   readonly activeId: string | null
-  readonly hiring: boolean
-  readonly businessOpen: boolean
   readonly server: ServerStatus | null
   readonly theme: Theme
   readonly onToggleTheme: () => void
   readonly onHire: () => void
-  readonly onOpenBusiness: () => void
+  readonly onAddDepartment: () => void
+  readonly onRenameDepartment: (department: Department) => void
+  readonly onDeleteDepartment: (department: Department) => void
   readonly onSearch: () => void
   readonly onPinEmployee: (agent: Agent) => void
   readonly onOpenEmployee: (id: string) => void
@@ -60,7 +62,7 @@ const TeamRow = ({ employee, lastMessage, active, onOpen, onPin, onSettings, onD
     >
       <AnimatedSidebarMenuButton
         className="text-[15px] font-medium"
-        icon={<Mascot size={40} shape={employee.shape} face={employee.face} color={employee.color} />}
+        icon={<EmployeeAvatar agent={employee} size={40} greet />}
         isActive={active}
         onSelect={onOpen}
       >
@@ -77,7 +79,7 @@ const TeamRow = ({ employee, lastMessage, active, onOpen, onPin, onSettings, onD
           )}
         </span>
         <span className="block truncate text-[13px] font-normal leading-[18px] text-muted-foreground">
-          {lastMessage?.text ?? employee.job}
+          {lastMessage === undefined ? employee.job : plainPreview(lastMessage.text)}
         </span>
       </AnimatedSidebarMenuButton>
       {menuAt !== null && (
@@ -95,6 +97,123 @@ const TeamRow = ({ employee, lastMessage, active, onOpen, onPin, onSettings, onD
   )
 }
 
+/** The plus next to search. */
+const AddButton = ({ onHire, onAddDepartment }: Pick<AppSidebarProps, "onHire" | "onAddDepartment">) => {
+  const [menuAt, setMenuAt] = useState<MenuPoint | null>(null)
+  const closeMenu = useCallback(() => setMenuAt(null), [])
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Add"
+        aria-haspopup="menu"
+        aria-expanded={menuAt !== null}
+        title="Add"
+        // The open menu closes on any press outside it, which would reopen it on click.
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          const box = event.currentTarget.getBoundingClientRect()
+          setMenuAt(menuAt === null ? { x: box.left, y: box.bottom + 4 } : null)
+        }}
+        className="flex size-9 shrink-0 items-center justify-center rounded-control-sm border bg-field text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Plus className="size-4" />
+      </button>
+      {menuAt !== null && (
+        <Menu
+          label="Add"
+          at={menuAt}
+          onClose={closeMenu}
+          items={[
+            { label: "Hire an employee", icon: Bot, onSelect: onHire },
+            { label: "Add a department", icon: FolderPlus, onSelect: onAddDepartment }
+          ]}
+        />
+      )}
+    </>
+  )
+}
+
+type TeamActions = Pick<
+  AppSidebarProps,
+  "lastMessages" | "activeId" | "onPinEmployee" | "onOpenEmployee" | "onOpenSettings" | "onDeleteEmployee"
+>
+
+const TeamRows = ({
+  team,
+  lastMessages,
+  activeId,
+  onPinEmployee,
+  onOpenEmployee,
+  onOpenSettings,
+  onDeleteEmployee
+}: TeamActions & { readonly team: ReadonlyArray<Agent> }) => (
+  <AnimatedSidebarMenu className="[--sidebar-icon:2.5rem] [--sidebar-row:3.5rem]">
+    {[...team]
+      .sort((first, second) => Number(second.pinned) - Number(first.pinned))
+      .map((employee) => (
+        <TeamRow
+          key={employee.id}
+          employee={employee}
+          lastMessage={lastMessages.find((message) => message.agentId === employee.id)}
+          active={employee.id === activeId}
+          onOpen={() => onOpenEmployee(employee.id)}
+          onPin={() => onPinEmployee(employee)}
+          onSettings={() => onOpenSettings(employee.id)}
+          onDelete={() => onDeleteEmployee(employee)}
+        />
+      ))}
+  </AnimatedSidebarMenu>
+)
+
+const DepartmentGroup = ({
+  department,
+  team,
+  onRename,
+  onDelete,
+  ...actions
+}: TeamActions & {
+  readonly department: Department
+  readonly team: ReadonlyArray<Agent>
+  readonly onRename: () => void
+  readonly onDelete: () => void
+}) => {
+  const [menuAt, setMenuAt] = useState<MenuPoint | null>(null)
+  const closeMenu = useCallback(() => setMenuAt(null), [])
+
+  return (
+    <AnimatedSidebarGroup>
+      <AnimatedSidebarGroupLabel
+        onContextMenu={(event) => {
+          event.preventDefault()
+          setMenuAt({ x: event.clientX, y: event.clientY })
+        }}
+      >
+        {department.name}
+      </AnimatedSidebarGroupLabel>
+      <AnimatedSidebarGroupContent>
+        {team.length === 0 ? (
+          <p className="px-2 pb-1 text-[13px] text-muted-foreground">No employees yet</p>
+        ) : (
+          <TeamRows team={team} {...actions} />
+        )}
+      </AnimatedSidebarGroupContent>
+      {menuAt !== null && (
+        <Menu
+          label={`Actions for ${department.name}`}
+          at={menuAt}
+          onClose={closeMenu}
+          items={[
+            { label: "Rename", icon: Pencil, onSelect: onRename },
+            { label: "Delete", icon: Trash2, danger: true, onSelect: onDelete }
+          ]}
+        />
+      )}
+    </AnimatedSidebarGroup>
+  )
+}
+
 const serverLabel = (server: ServerStatus | null) => {
   if (server === null) return "Connecting"
   return server.state === "online" ? "Server online" : "Server offline"
@@ -102,127 +221,80 @@ const serverLabel = (server: ServerStatus | null) => {
 
 export const AppSidebar = ({
   team,
+  departments,
   lastMessages,
   activeId,
-  hiring,
-  businessOpen,
   server,
   theme,
   onToggleTheme,
   onHire,
-  onOpenBusiness,
+  onAddDepartment,
+  onRenameDepartment,
+  onDeleteDepartment,
   onSearch,
   onPinEmployee,
   onOpenEmployee,
   onOpenSettings,
   onDeleteEmployee
-}: AppSidebarProps) => (
-  <AnimatedSidebar collapsible="none" ariaLabel="Main" panelClassName="bg-sidebar h-full">
-    <AnimatedSidebarHeader className="window-drag flex h-12 shrink-0 flex-row items-center gap-2 px-4">
-      <span className="text-[15px] font-semibold">Scope Bot</span>
-    </AnimatedSidebarHeader>
+}: AppSidebarProps) => {
+  const actions = { lastMessages, activeId, onPinEmployee, onOpenEmployee, onOpenSettings, onDeleteEmployee }
+  const sorted = [...departments].sort((first, second) => first.name.localeCompare(second.name))
+  // An employee whose department just went away still has to show up somewhere.
+  const general = team.filter((employee) => !departments.some((item) => item.id === employee.departmentId))
 
-    <div className="px-3 pb-1">
-      <button
-        type="button"
-        onClick={onSearch}
-        className="flex h-9 w-full items-center gap-2 rounded-lg border bg-background px-2.5 text-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Search className="size-4" />
-        Search
-        <kbd className="ml-auto font-sans text-[11px]">Ctrl K</kbd>
-      </button>
-    </div>
+  return (
+    <AnimatedSidebar collapsible="none" ariaLabel="Main" panelClassName="bg-background h-full">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+        <button
+          type="button"
+          onClick={onSearch}
+          className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-control-sm border bg-field px-2.5 text-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Search className="size-4" />
+          Search
+          <kbd className="ml-auto font-sans text-[11px]">Ctrl K</kbd>
+        </button>
+        <AddButton onHire={onHire} onAddDepartment={onAddDepartment} />
+      </div>
 
-    <AnimatedSidebarContent>
-      <AnimatedSidebarGroup>
-        <AnimatedSidebarGroupContent>
-          <AnimatedSidebarMenu className="[--sidebar-row:2.75rem]">
-            <AnimatedSidebarMenuItem>
-              <AnimatedSidebarMenuButton
-                className="text-[15px]"
-                icon={<Plus className="size-5" />}
-                isActive={hiring}
-                onSelect={onHire}
-              >
-                {team.length === 0 ? "Hire your first employee" : "Hire an employee"}
-              </AnimatedSidebarMenuButton>
-            </AnimatedSidebarMenuItem>
-            <AnimatedSidebarMenuItem>
-              <AnimatedSidebarMenuButton
-                className="text-[15px]"
-                icon={<Building2 className="size-5" />}
-                isActive={businessOpen}
-                onSelect={onOpenBusiness}
-              >
-                Business
-              </AnimatedSidebarMenuButton>
-            </AnimatedSidebarMenuItem>
-            {team.length > 0 && (
-              <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton disabled className="text-[15px]" icon={<Check className="size-5" />}>
-                  Approvals
-                </AnimatedSidebarMenuButton>
-              </AnimatedSidebarMenuItem>
-            )}
-            {team.length > 0 && (
-              <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton disabled className="text-[15px]" icon={<ScrollText className="size-5" />}>
-                  Activity log
-                </AnimatedSidebarMenuButton>
-              </AnimatedSidebarMenuItem>
-            )}
-            {team.length > 0 && (
-              <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton disabled className="text-[15px]" icon={<ChartColumn className="size-5" />}>
-                  Dashboard
-                </AnimatedSidebarMenuButton>
-              </AnimatedSidebarMenuItem>
-            )}
-          </AnimatedSidebarMenu>
-        </AnimatedSidebarGroupContent>
-      </AnimatedSidebarGroup>
+      <AnimatedSidebarContent>
+        {general.length > 0 && (
+          <AnimatedSidebarGroup>
+            <AnimatedSidebarGroupLabel>Team</AnimatedSidebarGroupLabel>
+            <AnimatedSidebarGroupContent>
+              <TeamRows team={general} {...actions} />
+            </AnimatedSidebarGroupContent>
+          </AnimatedSidebarGroup>
+        )}
+        {sorted.map((department) => (
+          <DepartmentGroup
+            key={department.id}
+            department={department}
+            team={team.filter((employee) => employee.departmentId === department.id)}
+            onRename={() => onRenameDepartment(department)}
+            onDelete={() => onDeleteDepartment(department)}
+            {...actions}
+          />
+        ))}
+        {team.length === 0 && departments.length === 0 && (
+          <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">No employees yet</p>
+        )}
+      </AnimatedSidebarContent>
 
-      {team.length > 0 ? (
-        <AnimatedSidebarGroup>
-          <AnimatedSidebarGroupLabel>Team</AnimatedSidebarGroupLabel>
-          <AnimatedSidebarGroupContent>
-            <AnimatedSidebarMenu className="[--sidebar-icon:2.5rem] [--sidebar-row:3.5rem]">
-              {[...team]
-                .sort((first, second) => Number(second.pinned) - Number(first.pinned))
-                .map((employee) => (
-                  <TeamRow
-                    key={employee.id}
-                    employee={employee}
-                    lastMessage={lastMessages.find((message) => message.agentId === employee.id)}
-                    active={employee.id === activeId}
-                    onOpen={() => onOpenEmployee(employee.id)}
-                    onPin={() => onPinEmployee(employee)}
-                    onSettings={() => onOpenSettings(employee.id)}
-                    onDelete={() => onDeleteEmployee(employee)}
-                  />
-                ))}
-            </AnimatedSidebarMenu>
-          </AnimatedSidebarGroupContent>
-        </AnimatedSidebarGroup>
-      ) : (
-        <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">No employees yet</p>
-      )}
-    </AnimatedSidebarContent>
-
-    <AnimatedSidebarFooter className="flex flex-row items-center justify-between gap-2 px-4 py-3">
-      <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
-        <span className={`size-2 rounded-full ${server?.state === "online" ? "bg-foreground" : "bg-destructive"}`} />
-        {serverLabel(server)}
-      </span>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        onClick={onToggleTheme}
-      >
-        {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-      </Button>
-    </AnimatedSidebarFooter>
-  </AnimatedSidebar>
-)
+      <AnimatedSidebarFooter className="flex flex-row items-center justify-between gap-2 px-4 py-3">
+        <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
+          <span className={`size-2 rounded-full ${server?.state === "online" ? "bg-foreground" : "bg-destructive"}`} />
+          {serverLabel(server)}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          onClick={onToggleTheme}
+        >
+          {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        </Button>
+      </AnimatedSidebarFooter>
+    </AnimatedSidebar>
+  )
+}

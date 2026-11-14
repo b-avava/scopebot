@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { ModelFailed, ModelNotConfigured, type ModelOption, ModelRefused } from "@scope-bot/domain"
-import { Effect, Layer, Option, Redacted } from "effect"
+import { Effect, Layer, Option, Redacted, Stream } from "effect"
 import { ChatModel, type ChatRequest, type ChatTurn } from "./ChatModel.ts"
 import { llmConfig } from "./LlmConfig.ts"
 
@@ -36,25 +36,43 @@ const toContent = (turn: ChatTurn) =>
         ...(turn.text === "" ? [] : [{ type: "text" as const, text: turn.text }])
       ]
 
+const params = (model: string, request: ChatRequest) => ({
+  model,
+  max_tokens: MAX_TOKENS,
+  system: request.system,
+  messages: request.turns.map((turn) => ({ role: turn.role, content: toContent(turn) })),
+  // Short conversational replies do not need deep reasoning unless the business asks for it.
+  ...(supportsEffort(model)
+    ? { output_config: { effort: request.reasoning === "default" ? ("low" as const) : request.reasoning } }
+    : {}),
+  ...(supportsFallback(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {})
+})
+
+/** The same request, told to `onText` as it is written. Stopping it aborts the request. */
+const sendStreaming = (
+  client: Anthropic,
+  model: string,
+  request: ChatRequest,
+  onText: (soFar: string) => Effect.Effect<void>
+) =>
+  Effect.suspend(() => {
+    const controller = new AbortController()
+    const stream = client.beta.messages.stream(params(model, request), { signal: controller.signal })
+    let soFar = ""
+    return Stream.fromAsyncIterable(stream, toFailure).pipe(
+      Stream.runForEach((event) => {
+        if (event.type !== "content_block_delta" || event.delta.type !== "text_delta") return Effect.void
+        soFar += event.delta.text
+        return onText(soFar)
+      }),
+      Effect.andThen(Effect.tryPromise({ try: () => stream.finalMessage(), catch: toFailure })),
+      Effect.onInterrupt(() => Effect.sync(() => controller.abort()))
+    )
+  })
+
 const send = (client: Anthropic, model: string, request: ChatRequest) =>
   Effect.tryPromise({
-    try: (signal) =>
-      client.beta.messages.create(
-        {
-          model,
-          max_tokens: MAX_TOKENS,
-          system: request.system,
-          messages: request.turns.map((turn) => ({ role: turn.role, content: toContent(turn) })),
-          // Short conversational replies do not need deep reasoning unless the business asks for it.
-          ...(supportsEffort(model)
-            ? { output_config: { effort: request.reasoning === "default" ? ("low" as const) : request.reasoning } }
-            : {}),
-          ...(supportsFallback(model)
-            ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
-            : {})
-        },
-        { signal }
-      ),
+    try: (signal) => client.beta.messages.create(params(model, request), { signal }),
     catch: toFailure
   })
 
@@ -102,7 +120,11 @@ export const AnthropicChatModel = Layer.effect(
       reply: Effect.fn("ChatModel.reply")(function* (request) {
         if (Option.isNone(client)) return yield* new ModelNotConfigured()
 
-        const response = yield* send(client.value, request.model === "" ? defaultModel : request.model, request)
+        const model = request.model === "" ? defaultModel : request.model
+        const response =
+          request.onText === undefined
+            ? yield* send(client.value, model, request)
+            : yield* sendStreaming(client.value, model, request, request.onText)
         if (response.stop_reason === "refusal") return yield* new ModelRefused()
 
         const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")

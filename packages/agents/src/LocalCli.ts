@@ -14,6 +14,8 @@ export interface CliCommand {
   /** Added to the server's environment, for an API key. */
   readonly env?: Record<string, string>
   readonly timeout: Duration.Input
+  /** Told each line of the output as it comes, for a reply written as it is watched. */
+  readonly onLine?: (line: string) => Effect.Effect<void>
 }
 
 export interface CliResult {
@@ -47,7 +49,14 @@ export const conversationPrompt = (turns: ReadonlyArray<ChatTurn>) =>
     "Photos are attached in the order of the messages that mention them.",
     JSON.stringify(
       turns.map((turn) => ({
-        from: turn.supervisor === true ? "supervisor" : turn.role === "user" ? "customer" : "you",
+        from:
+          turn.tool === true
+            ? "tools"
+            : turn.supervisor === true
+              ? "supervisor"
+              : turn.role === "user"
+                ? "customer"
+                : "you",
         text: turn.text,
         ...(turn.images === undefined ? {} : { photos: turn.images.length })
       }))
@@ -103,11 +112,21 @@ export class LocalCli extends Context.Service<
                 forceKillAfter: "2 seconds"
               })
             )
-            const [stdout, stderr, exitCode] = yield* Effect.all(
-              [text(handle.stdout), text(handle.stderr), handle.exitCode],
-              { concurrency: "unbounded" }
-            )
-            return { exitCode: Number(exitCode), stdout, stderr }
+            const onLine = command.onLine
+            const stdout =
+              onLine === undefined
+                ? text(handle.stdout)
+                : handle.stdout.pipe(
+                    Stream.decodeText(),
+                    Stream.splitLines,
+                    Stream.tap(onLine),
+                    Stream.runCollect,
+                    Effect.map((lines) => Array.from(lines).join("\n"))
+                  )
+            const [stdoutText, stderr, exitCode] = yield* Effect.all([stdout, text(handle.stderr), handle.exitCode], {
+              concurrency: "unbounded"
+            })
+            return { exitCode: Number(exitCode), stdout: stdoutText, stderr }
           }).pipe(
             Effect.scoped,
             Effect.timeout(command.timeout),

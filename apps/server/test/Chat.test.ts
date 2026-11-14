@@ -1,12 +1,22 @@
 import { assert, layer } from "@effect/vitest"
-import { AgentChat, Agents, ChatModel, ModelProviders } from "@scope-bot/agents"
+import {
+  AgentChat,
+  Agents,
+  CalendarTools,
+  ChatModel,
+  ModelProviders,
+  ReminderSenders,
+  Reminders,
+  Suggestions
+} from "@scope-bot/agents"
 import { Api } from "@scope-bot/contracts"
-import { Store } from "@scope-bot/db"
+import { CalendarStorage, Store } from "@scope-bot/db"
 import { AgentId, ConversationId, ModelNotConfigured } from "@scope-bot/domain"
 import { Effect, Layer } from "effect"
 import { HttpServer } from "effect/http"
 import { HttpApiTest } from "effect/http-api"
 import { AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers, SearchApiHandlers } from "../src/Http.ts"
+import { TestAuthorization } from "./support.ts"
 
 const model = Layer.succeed(
   ChatModel,
@@ -22,14 +32,26 @@ const model = Layer.succeed(
   })
 )
 
-const services = AgentChat.layer.pipe(
+/** Clients are not told anything in these tests. */
+const quietSenders = Layer.succeed(
+  ReminderSenders,
+  ReminderSenders.of({ whatsapp: () => Effect.void, telegram: () => Effect.void, instagram: () => Effect.void })
+)
+
+const services = Suggestions.layer.pipe(
+  Layer.provideMerge(Reminders.layer),
+  Layer.provide(quietSenders),
+  Layer.provideMerge(AgentChat.layer),
+  Layer.provideMerge(CalendarTools.layerWithCalendar),
   Layer.provideMerge(Agents.layer),
   Layer.provideMerge(ModelProviders.layerApiOnly),
   Layer.provide(model),
+  Layer.provide(CalendarStorage.layerMemory),
   Layer.provide(Store.layerMemory)
 )
 
 const handlers = Layer.mergeAll(AgentsApiHandlers, ChatApiHandlers, ModelsApiHandlers, SearchApiHandlers).pipe(
+  Layer.provide(TestAuthorization),
   Layer.provide(services)
 )
 
@@ -37,13 +59,13 @@ const chatOf = (agent: { readonly id: AgentId }) => ({ id: agent.id, conversatio
 
 const makeClient = HttpApiTest.groups(Api, ["agents", "chat", "models", "search"])
 
-layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API", (it) => {
+layer(Layer.mergeAll(handlers, TestAuthorization, HttpServer.layerServices))("Agents and chat API", (it) => {
   it.effect("creates an agent, changes its settings and chats with it", () =>
     Effect.gen(function* () {
       const client = yield* makeClient
 
       const agent = yield* client.agents.create({
-        payload: { name: "Nino", job: "Front desk", color: "#000", shape: "squircle", face: "neutral" }
+        payload: { name: "Nino", job: "Front desk", color: "#000" }
       })
       assert.strictEqual(agent.model, "")
       assert.isTrue(agent.active)
@@ -66,6 +88,11 @@ layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API",
       const actions = yield* client.chat.actions({ params: { id: agent.id } })
       assert.strictEqual(actions[0]?.summary, "Replied to the customer")
 
+      // The reply was saved, so there is nothing left to show while answering, and nothing to stop.
+      const live = yield* client.chat.live({ params: chatOf(agent), query: { after: -1 } })
+      assert.deepInclude(live, { status: "idle", text: "" })
+      yield* client.chat.stop({ params: chatOf(agent) })
+
       yield* client.agents.remove({ params: { id: agent.id } })
       assert.isFalse((yield* client.agents.list()).some((item) => item.id === agent.id))
     })
@@ -75,7 +102,7 @@ layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API",
     Effect.gen(function* () {
       const client = yield* makeClient
       const agent = yield* client.agents.create({
-        payload: { name: "Lasha", job: "Sales", color: "#000", shape: "circle", face: "happy" }
+        payload: { name: "Lasha", job: "Sales", color: "#000" }
       })
       assert.isFalse(agent.pinned)
 
@@ -108,7 +135,7 @@ layer(Layer.mergeAll(handlers, HttpServer.layerServices))("Agents and chat API",
     Effect.gen(function* () {
       const client = yield* makeClient
       const agent = yield* client.agents.create({
-        payload: { name: "Tamar", job: "Sales", color: "#000", shape: "circle", face: "happy" }
+        payload: { name: "Tamar", job: "Sales", color: "#000" }
       })
 
       const notConfigured = yield* client.chat

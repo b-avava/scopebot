@@ -88,7 +88,7 @@ const ModelRow = ({
 )
 
 const railClasses = (active: boolean) =>
-  `flex size-9 items-center justify-center rounded-lg outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring ${
+  `flex size-9 items-center justify-center rounded-control-sm outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring ${
     active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
   }`
 
@@ -108,7 +108,7 @@ const EffortField = ({
         aria-label="Effort"
         value={value}
         onChange={(event) => onChange(event.target.value as ReasoningEffort)}
-        className="h-8 appearance-none rounded-lg bg-muted pl-2.5 pr-7 text-[13px] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-8 appearance-none rounded-control-sm bg-muted pl-2.5 pr-7 text-[13px] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {["default" as const, ...levels].map((level) => (
           <option key={level} value={level}>
@@ -154,7 +154,7 @@ const ModelList = ({ provider, selected, hidden, onPick, children }: ModelListPr
           placeholder="Search models"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          className="h-9 w-full rounded-lg bg-muted px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 w-full rounded-control-sm bg-muted px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
       <fieldset aria-label="Models" className="min-h-0 flex-1 overflow-y-auto border-0 p-1.5">
@@ -246,7 +246,7 @@ export const ModelPicker = ({
   return (
     <MorphPopover open={open} onOpenChange={changeOpen} className={className}>
       <MorphPopoverTrigger>{children}</MorphPopoverTrigger>
-      <MorphPopoverContent side={side} align={align} radius={14}>
+      <MorphPopoverContent side={side} align={align} radius={12}>
         <div className="flex h-[440px] w-[380px] overflow-hidden">
           <nav aria-label="Providers" className="flex w-13 shrink-0 flex-col items-center gap-1 border-r p-2">
             {connected.map((provider) => (

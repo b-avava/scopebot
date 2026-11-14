@@ -46,14 +46,14 @@ export const ModelField = ({ value, onChange, compact = false, side = "top" }: M
         <button
           type="button"
           aria-label="Model"
-          className="flex h-8 max-w-80 items-center rounded-lg px-2 text-[13px] outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-8 max-w-80 items-center rounded-control-sm px-2 text-[13px] outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
           {summary}
         </button>
       ) : (
         <button
           type="button"
-          className="flex h-11 w-full items-center justify-between gap-3 rounded-xl border bg-background px-3 text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-11 w-full items-center justify-between gap-3 rounded-control border bg-field px-3 text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="text-muted-foreground">Model</span>
           {summary}
@@ -84,7 +84,7 @@ export const BackupModels = ({ value, onChange }: BackupModelsProps) => {
             return (
               <li
                 key={`${backup.provider}:${backup.model}`}
-                className="flex h-10 items-center gap-3 rounded-xl bg-muted pl-3 pr-1 text-sm"
+                className="flex h-10 items-center gap-3 rounded-control bg-muted pl-3 pr-1 text-sm"
               >
                 <span className="w-4 shrink-0 tabular-nums text-muted-foreground">{index + 1}</span>
                 <ProviderIcon provider={backup.provider} size={16} />
@@ -93,7 +93,7 @@ export const BackupModels = ({ value, onChange }: BackupModelsProps) => {
                   type="button"
                   aria-label={`Remove ${name}`}
                   onClick={() => onChange({ backupModels: value.backupModels.filter((item) => !isSame(item, backup)) })}
-                  className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-control-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X className="size-4" />
                 </button>
@@ -112,7 +112,7 @@ export const BackupModels = ({ value, onChange }: BackupModelsProps) => {
         >
           <button
             type="button"
-            className="flex h-11 w-full items-center gap-2 rounded-xl border bg-background px-3 text-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-11 w-full items-center gap-2 rounded-control border bg-field px-3 text-sm text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Plus className="size-4" />
             Add a backup
