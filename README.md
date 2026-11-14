@@ -46,8 +46,8 @@ The comments in `.env.example` explain each setting. More commands and details a
 
 ## Contributing
 
-Pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, conventions and the rules for AI coding assistants.
+Pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, conventions and the rules for AI coding assistants. Found a security problem? Report it privately, as [SECURITY.md](SECURITY.md) explains.
 
 ## Licence
 
-Not chosen yet. It is one of the [open questions](docs/roadmap.md#open-questions).
+[AGPL-3.0](LICENSE). Any business may use Scope Bot for its work. Whoever changes it and lets other people use it over a network must offer them the changed source. Why this licence: [ADR 0027](docs/adr/0027-open-source-distribution-and-versions.md).

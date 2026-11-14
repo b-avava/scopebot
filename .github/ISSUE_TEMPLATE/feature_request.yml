@@ -1,0 +1,31 @@
+name: Feature request
+description: Something Scope Bot should do.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/b-avava/scopebot/blob/main/docs/roadmap.md) and open issues first. It may already be planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What your business or team needs to do, and what gets in the way today. Describe the need, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you suggest
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to work on this myself
