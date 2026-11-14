@@ -1,6 +1,6 @@
 # Domain model
 
-This file describes what exists in `packages/domain`. The target model is in section 6 of the README. Everything below belongs to one business, and storage never crosses that line (see ADR 0012).
+This file describes what exists in `packages/domain`. The target model is in section 6 of [architecture.md](architecture.md). Everything below belongs to one business, and storage never crosses that line (see ADR 0012).
 
 ## Accounts
 
