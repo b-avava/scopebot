@@ -127,6 +127,7 @@ scope-bot/
 │  ├─ domain.md          # Detailed domain model
 │  └─ roadmap.md         # Roadmap and open questions
 ├─ CONTRIBUTING.md       # Development setup, conventions, rules for AI assistants
+├─ Dockerfile            # The image a server runs: the server and the built web interface (ADR 0030)
 ├─ LICENSE               # AGPL-3.0
 ├─ README.md             # What Scope Bot is, for people who find the repository
 └─ SECURITY.md           # How to report a vulnerability

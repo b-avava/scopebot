@@ -61,3 +61,60 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: ${{ matrix.run }}
+
+  docker:
+    # Builds the image and runs it against PostgreSQL, the way a server runs it (ADR 0030).
+    name: Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the image
+        run: docker build --tag scope-bot:ci .
+
+      # The database is a throwaway, so the setup code it prints means nothing outside this run.
+      - name: Start the server
+        run: |
+          docker run --detach --name scope-bot --network host \
+            --env DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres \
+            --env SCOPE_BOT_SECRET="$(openssl rand -base64 32)" \
+            scope-bot:ci
+
+      - name: Check the server, the page and the image's own health check
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl --silent --show-error --fail http://127.0.0.1:3000/health
+          page="$(curl --silent --show-error --fail http://127.0.0.1:3000/)"
+          grep --quiet '<div id="root">' <<< "$page"
+          script="$(grep --only-matching '/assets/[^"]*\.js' <<< "$page" | head --lines 1)"
+          curl --silent --show-error --fail --output /dev/null "http://127.0.0.1:3000${script}"
+          docker logs scope-bot 2>&1 | grep --quiet "setup code"
+          test "$(docker inspect --format '{{.Config.User}}' scope-bot)" = node
+          for attempt in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' scope-bot)"
+            if [ "$status" = healthy ]; then break; fi
+            sleep 3
+          done
+          test "$status" = healthy
+
+      - name: Server log
+        if: always()
+        run: docker logs scope-bot

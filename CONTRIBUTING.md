@@ -15,6 +15,7 @@ pnpm dev:server   # server only
 pnpm dev:desktop  # desktop app only (shows "Server offline" without a server)
 pnpm dev:web      # the interface in a browser at http://localhost:5174, with a server running
 pnpm build:web    # builds the browser interface into apps/desktop/dist/web
+docker build -t scope-bot .  # the image a server runs, with the server and the web interface (ADR 0030)
 pnpm check        # lint + typecheck + tests, some of them on PostgreSQL
 pnpm db:import <email>  # moves the old JSON data files into that account's business
 pnpm user:reset-password <email>  # prints a new password and signs that person out everywhere
