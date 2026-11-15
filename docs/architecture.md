@@ -110,7 +110,8 @@ scope-bot/
 │     ├─ client/         # API client shared by Electron main and the browser (Effect, no Node)
 │     ├─ main/           # Electron main process (Effect): RPC client, executor, OS integration
 │     ├─ preload/        # Typed, minimal IPC bridge
-│     └─ renderer/       # React UI
+│     ├─ renderer/       # React UI, shared by the desktop app and the browser
+│     └─ web/            # The bridge for a browser and the entry of the browser build
 ├─ packages/
 │  ├─ domain/            # Effect Schema entities, branded IDs, domain errors (no I/O)
 │  ├─ contracts/         # RPC and HTTP API definitions shared by server and clients

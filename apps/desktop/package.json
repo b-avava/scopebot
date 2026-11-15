@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "install-electron && electron-vite dev",
     "build": "electron-vite build",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
     "preview": "install-electron && electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json"
   },

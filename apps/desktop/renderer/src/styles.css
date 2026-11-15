@@ -1,5 +1,8 @@
 @import "@scope-bot/ui/styles.css";
 
+/* The browser build has its root in web/, so the screens are named here for Tailwind to find their classes. */
+@source "./";
+
 /* The strip that holds the window controls. `titleBarColors` in main/index.ts must match. */
 :root {
   --title-strip: #ececee;
@@ -16,4 +19,9 @@
 
 .window-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* A browser draws its own tab and window controls (ADR 0029). */
+.in-browser .window-strip {
+  display: none;
 }

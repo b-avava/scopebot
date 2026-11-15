@@ -14,5 +14,5 @@
       "@/*": ["../../packages/ui/src/*"]
     }
   },
-  "include": ["renderer"]
+  "include": ["renderer", "web"]
 }
