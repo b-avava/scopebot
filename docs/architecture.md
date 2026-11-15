@@ -55,7 +55,7 @@ These are non-negotiable and should guide every design decision.
 ### Key decisions
 
 - **All agents run on the server.** Agents must work 24/7, receive webhooks and serve multiple users. The web interface and the desktop app are clients, never the place where agent logic lives.
-- **Web interface first.** The server serves the interface to any browser, so people need nothing installed. The desktop app shows the same interface and adds what a browser cannot: notifications and the local executor (see ADR 0027). The diagram above still shows only the desktop app, because the web interface is not built yet.
+- **Web interface first.** The server serves the interface to any browser, so people need nothing installed. The desktop app shows the same interface and adds what a browser cannot: notifications and the local executor (see ADR 0027). The browser keeps its session in a cookie, and the server serves the built page from `/` with a strict CSP (ADR 0029). The diagram above shows only the desktop app; a browser takes its place with the same interface.
 - **The desktop main process is a thin executor.** The server sends commands ("list files in allowed folder", "take screenshot", "click element"), the executor performs them and returns results. LLM calls, API keys, agent logic and logs stay on the server.
 - **Self-hosted first.** Every business runs its own server, in its office or on a rented machine (Docker Compose). Setup must be possible without help from the authors. Avoid hard dependencies on cloud-only services; a service that needs an account, such as a channel or an LLM provider, uses the business's own account.
 - **One language end to end.** TypeScript everywhere; Effect on server and in Electron main; shared schemas across all layers.
@@ -107,9 +107,11 @@ scope-bot/
 ├─ apps/
 │  ├─ server/            # HTTP API, RPC server, agent runtime entrypoint, workers
 │  └─ desktop/
+│     ├─ client/         # API client shared by Electron main and the browser (Effect, no Node)
 │     ├─ main/           # Electron main process (Effect): RPC client, executor, OS integration
 │     ├─ preload/        # Typed, minimal IPC bridge
-│     └─ renderer/       # React UI
+│     ├─ renderer/       # React UI, shared by the desktop app and the browser
+│     └─ web/            # The bridge for a browser and the entry of the browser build
 ├─ packages/
 │  ├─ domain/            # Effect Schema entities, branded IDs, domain errors (no I/O)
 │  ├─ contracts/         # RPC and HTTP API definitions shared by server and clients
@@ -220,6 +222,7 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 - Multi-tenant isolation: every query is scoped by business (tenant) ID, and composite foreign keys keep links inside one business.
 - A new server is set up with a one-time code from its own log, and sign-up closes after that (ADR 0028).
 - Passwords are hashed with scrypt. Only hashes of session tokens and invite codes are stored, and the desktop app keeps its token in the main process.
+- A browser keeps its session in an `HttpOnly`, `SameSite=Strict` cookie that the page cannot read. A request that changes something with that cookie, and signing in from a browser, must come from the server's own page (ADR 0029).
 - API keys people add are encrypted at rest. A server reachable from outside needs TLS in front of it.
 - Personal and sensitive data: encryption at rest, access logs, data export and deletion on request.
 - Treat all external content (messages, files, screen text) as untrusted.

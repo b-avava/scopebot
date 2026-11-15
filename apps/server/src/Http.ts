@@ -22,13 +22,16 @@ import {
   type Appointment,
   type AppointmentId,
   AppointmentNotFound,
+  type AuthSession,
   Forbidden,
   type SpecialistId,
   SpecialistNotFound
 } from "@scope-bot/domain"
-import { Effect, Layer } from "effect"
+import { Clock, Effect, Layer } from "effect"
 import { HttpApiBuilder } from "effect/http-api"
-import { Auth } from "./Auth.ts"
+import { Auth, SESSION_MS } from "./Auth.ts"
+import { SecurityHeaders } from "./WebRoutes.ts"
+import { CrossSiteGuard, expireSessionCookie, setSessionCookie } from "./WebSession.ts"
 
 /** Settings of the whole business are for owners and admins. */
 const requireManager = CurrentSession.pipe(
@@ -60,6 +63,29 @@ export const AuthApiHandlers = HttpApiBuilder.group(
   })
 )
 
+/** A browser gets the session as a cookie its page cannot read, and only the account in the answer (ADR 0029). */
+const inCookie = <E>(session: Effect.Effect<AuthSession, E>) =>
+  session.pipe(
+    Effect.tap(({ token }) =>
+      Clock.currentTimeMillis.pipe(Effect.flatMap((now) => setSessionCookie(token, new Date(now + SESSION_MS))))
+    ),
+    Effect.map(({ account }) => account)
+  )
+
+export const WebAuthApiHandlers = HttpApiBuilder.group(
+  Api,
+  "webAuth",
+  Effect.fn(function* (handlers) {
+    const auth = yield* Auth
+
+    return handlers.handleAll({
+      register: ({ payload }) => inCookie(auth.register(payload)),
+      login: ({ payload }) => inCookie(auth.login(payload)),
+      join: ({ payload }) => inCookie(auth.join(payload))
+    })
+  })
+)
+
 export const AccountApiHandlers = HttpApiBuilder.group(
   Api,
   "account",
@@ -68,7 +94,7 @@ export const AccountApiHandlers = HttpApiBuilder.group(
 
     return handlers.handleAll({
       me: () => CurrentSession.pipe(Effect.map(({ account }) => account)),
-      logout: () => CurrentSession.pipe(Effect.flatMap(auth.logout)),
+      logout: () => CurrentSession.pipe(Effect.flatMap(auth.logout), Effect.andThen(expireSessionCookie)),
       changePassword: ({ payload }) =>
         CurrentSession.pipe(Effect.flatMap((session) => auth.changePassword(session, payload)))
     })
@@ -508,6 +534,7 @@ export const CalendarApiHandlers = HttpApiBuilder.group(
 export const ApiHandlers = Layer.mergeAll(
   SystemApiHandlers,
   AuthApiHandlers,
+  WebAuthApiHandlers,
   AccountApiHandlers,
   TeamApiHandlers,
   BusinessApiHandlers,
@@ -533,6 +560,8 @@ export const ApiHandlers = Layer.mergeAll(
   CalendarApiHandlers
 )
 
-export const ApiRoutes = HttpApiBuilder.layer(Api, {
-  openapiPath: "/openapi.json"
-}).pipe(Layer.provide(ApiHandlers))
+export const ApiRoutes = Layer.mergeAll(
+  HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(Layer.provide(ApiHandlers)),
+  CrossSiteGuard,
+  SecurityHeaders
+)

@@ -22,7 +22,7 @@ export const AppFrame = ({ children }: { readonly children: ReactNode }) => {
     <TitleBarSlot.Provider value={slot}>
       <div className="flex h-svh w-full flex-col overflow-hidden bg-sidebar">
         <header className="window-drag shrink-0">
-          <div className="flex h-[26px] items-center bg-(--title-strip) pl-3 text-xs text-muted-foreground">
+          <div className="window-strip flex h-[26px] items-center bg-(--title-strip) pl-3 text-xs text-muted-foreground">
             Scope Bot
           </div>
           <div ref={setSlot} className="flex h-10 items-center gap-2 pr-3 pl-[372px]" />

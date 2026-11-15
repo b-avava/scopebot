@@ -13,11 +13,15 @@ pnpm install
 pnpm dev          # server on http://localhost:3000 + desktop app window
 pnpm dev:server   # server only
 pnpm dev:desktop  # desktop app only (shows "Server offline" without a server)
+pnpm dev:web      # the interface in a browser at http://localhost:5174, with a server running
+pnpm build:web    # builds the browser interface into apps/desktop/dist/web
 pnpm check        # lint + typecheck + tests, some of them on PostgreSQL
 pnpm db:import <email>  # moves the old JSON data files into that account's business
 pnpm user:reset-password <email>  # prints a new password and signs that person out everywhere
 pnpm lint:fix     # format and apply safe lint fixes
 ```
+
+`pnpm dev:web` serves the same interface the desktop app shows, with a bridge for the browser in `apps/desktop/web`. Vite passes `/api` to the server at `SCOPE_BOT_SERVER_URL`, so the page and the API share one address and the session cookie works (ADR 0029). Built with `pnpm build:web`, the server itself serves the page at `/` and its files under `/assets/`, with the CSP and other security headers, from `WEB_DIR` or `apps/desktop/dist/web`.
 
 On an empty database the server writes a setup code to its log. The app asks for it to create the first business and its owner; after that, people join with invites unless `SIGNUP=open` (ADR 0028).
 

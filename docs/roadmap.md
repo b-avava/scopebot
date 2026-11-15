@@ -10,7 +10,7 @@ What is planned, in order, and the questions that are still open. How the parts 
 - Chat with an employee: steps and reasons under answers, answer again, edit the last question, feedback and rules from the team (ADR 0023). Markdown and day cards drawn from the calendar (ADR 0024). Answers written live, with steps and Stop (ADR 0025). Voice input with ElevenLabs Scribe (ADR 0026)
 - Bitrix24 import
 - Dashboard: funnel conversion by stage, response times
-- Web interface served by the server, the main way people work (ADR 0027)
+- Web interface served by the server, the main way people work (ADR 0027; it is in, see ADR 0029)
 - Desktop app: the same interface + notifications for approvals (executor not required yet)
 - Self-hosted setup: Docker Compose with PostgreSQL and HTTPS, a setup guide, and a way to update an existing install
 - Releases: one version for the repository, a Docker image and installers for every release (ADR 0027)

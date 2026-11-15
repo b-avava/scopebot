@@ -22,7 +22,7 @@ import {
   Voice,
   WhatsApp
 } from "@scope-bot/agents"
-import { Api } from "@scope-bot/contracts"
+import { Api, SESSION_COOKIE } from "@scope-bot/contracts"
 import {
   Accounts,
   CalendarStorage,
@@ -42,8 +42,8 @@ import {
   UserId
 } from "@scope-bot/domain"
 import { makeFakeInstagram, makeFakeTelegram, makeFakeWhatsApp } from "@scope-bot/integrations/testing"
-import { Effect, Layer } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpRouter } from "effect/http"
+import { Effect, Layer, Option } from "effect"
+import { Cookies, FetchHttpClient, HttpClient, HttpClientRequest, HttpRouter } from "effect/http"
 import { HttpApiClient } from "effect/http-api"
 import { SqlClient } from "effect/sql"
 import { Auth } from "../src/Auth.ts"
@@ -763,6 +763,118 @@ layer(server, { timeout: "120 seconds", excludeTestServices: true })("Auth", (it
 
       yield* owner.calendar.cancel({ params: { id: booked.id }, payload: { reason: "The client asked" } })
       yield* owner.calendar.book({ payload: { ...input, startsAt: overlap } })
+    })
+  )
+
+  // A browser signs in through /auth/web and keeps the session in a cookie (ADR 0029).
+  const browser = Effect.gen(function* () {
+    const http = yield* HttpClient.HttpClient
+    const origin = new URL((yield* http.get("/health")).request.url).origin
+    const send = (request: HttpClientRequest.HttpClientRequest, headers: Record<string, string> = { origin }) =>
+      http.execute(HttpClientRequest.setHeaders(request, headers))
+    const sessionOf = (response: { readonly cookies: Cookies.Cookies }) =>
+      Option.getOrUndefined(Cookies.get(response.cookies, SESSION_COOKIE))
+    const signUp = send(
+      HttpClientRequest.post("/auth/web/register").pipe(
+        HttpClientRequest.bodyJsonUnsafe({ businessName: "Northwind", name: "Owner", email: email(), password })
+      )
+    )
+    return { origin, send, sessionOf, signUp }
+  })
+
+  const withCookie = (value: string, headers: Record<string, string> = {}) => ({
+    cookie: `${SESSION_COOKIE}=${value}`,
+    ...headers
+  })
+
+  const daysUntil = (date: Date | undefined) => ((date?.getTime() ?? 0) - Date.now()) / 86_400_000
+
+  it.effect("signs a browser in with a cookie its page cannot read", () =>
+    Effect.gen(function* () {
+      const { origin, send, sessionOf, signUp } = yield* browser
+      const signedUp = yield* signUp
+      assert.strictEqual(signedUp.status, 200)
+      const account = (yield* signedUp.json) as { readonly businessName: string; readonly user: { email: string } }
+      assert.notProperty(account, "token", "The token never reaches the page")
+      assert.strictEqual(account.businessName, "Northwind")
+
+      const cookie = sessionOf(signedUp)
+      assert.isTrue(cookie?.options?.httpOnly)
+      assert.strictEqual(cookie?.options?.sameSite, "strict")
+      assert.strictEqual(cookie?.options?.path, "/")
+      assert.isNotTrue(cookie?.options?.secure, "Plain HTTP gets no Secure, or the browser would drop the cookie")
+      assert.approximately(daysUntil(cookie?.options?.expires), 30, 0.1)
+
+      const me = yield* send(HttpClientRequest.get("/account"), withCookie(cookie?.value ?? ""))
+      assert.strictEqual(me.status, 200)
+
+      const overHttps = yield* send(
+        HttpClientRequest.post("/auth/web/login").pipe(
+          HttpClientRequest.bodyJsonUnsafe({ email: account.user.email, password })
+        ),
+        { origin, "x-forwarded-proto": "https" }
+      )
+      assert.strictEqual(overHttps.status, 200)
+      assert.isTrue(sessionOf(overHttps)?.options?.secure, "Behind an HTTPS proxy the cookie is Secure")
+    })
+  )
+
+  it.effect("refuses changes a page of another site makes with the cookie", () =>
+    Effect.gen(function* () {
+      const { origin, send, sessionOf, signUp } = yield* browser
+      const signedUp = yield* signUp
+      const account = (yield* signedUp.json) as { readonly user: { email: string } }
+      const value = sessionOf(signedUp)?.value ?? ""
+      const create = HttpClientRequest.post("/contacts").pipe(HttpClientRequest.bodyJsonUnsafe(person))
+      const evil = "https://evil.example"
+
+      const fromAnotherSite = yield* send(create, withCookie(value, { origin: evil }))
+      const fetchedCrossSite = yield* send(create, withCookie(value, { "sec-fetch-site": "cross-site" }))
+      assert.deepStrictEqual([fromAnotherSite.status, fetchedCrossSite.status], [403, 403])
+      assert.deepStrictEqual(yield* fromAnotherSite.json, { _tag: "CrossSiteRequest" })
+
+      const reading = yield* send(HttpClientRequest.get("/contacts"), withCookie(value, { origin: evil }))
+      assert.strictEqual(reading.status, 200, "Reading changes nothing, and SameSite keeps the cookie home anyway")
+      assert.deepStrictEqual(yield* reading.json, [])
+
+      const ownPage = yield* send(create, withCookie(value, { origin }))
+      const noBrowser = yield* send(create, withCookie(value))
+      assert.deepStrictEqual([ownPage.status, noBrowser.status], [200, 200])
+
+      // A forced sign-in would put the person into someone else's account, so it is refused too.
+      const forcedLogin = yield* send(
+        HttpClientRequest.post("/auth/web/login").pipe(
+          HttpClientRequest.bodyJsonUnsafe({ email: account.user.email, password })
+        ),
+        { origin: evil }
+      )
+      assert.strictEqual(forcedLogin.status, 403)
+      assert.isUndefined(sessionOf(forcedLogin))
+    })
+  )
+
+  it.effect("moves the cookie with the session, and deletes it on sign-out", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const { send, sessionOf, signUp } = yield* browser
+      const signedUp = yield* signUp
+      const value = sessionOf(signedUp)?.value ?? ""
+      const user = ((yield* signedUp.json) as { readonly user: { readonly id: string } }).user.id
+
+      const fresh = yield* send(HttpClientRequest.get("/account"), withCookie(value))
+      assert.isUndefined(sessionOf(fresh), "A session used a moment ago is not extended")
+
+      yield* sql`UPDATE sessions SET last_used_at = now() - interval '2 hours' WHERE user_id = ${user}`
+      const moved = sessionOf(yield* send(HttpClientRequest.get("/account"), withCookie(value)))
+      assert.strictEqual(moved?.value, value)
+      assert.approximately(daysUntil(moved?.options?.expires), 30, 0.1)
+
+      const out = yield* send(HttpClientRequest.post("/account/logout"), withCookie(value))
+      assert.strictEqual(out.status, 204)
+      const expired = sessionOf(out)
+      assert.strictEqual(expired?.value, "")
+      assert.isBelow(daysUntil(expired?.options?.expires), 0)
+      assert.strictEqual((yield* send(HttpClientRequest.get("/account"), withCookie(value))).status, 401)
     })
   )
 })
