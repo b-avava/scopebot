@@ -13,6 +13,7 @@ import type {
   AppointmentOutcome,
   ApprovalDecision,
   ApprovalRequest,
+  AuthOptions,
   BusinessProfile,
   CalendarSettings,
   ChangePassword,
@@ -85,6 +86,7 @@ export const Channels = {
   removeVoiceKey: "voice:remove-key",
   transcribe: "voice:transcribe",
   getAccount: "account:get",
+  getAuthOptions: "account:options",
   register: "account:register",
   login: "account:login",
   joinTeam: "account:join",
@@ -261,6 +263,8 @@ export type BridgeError =
   | "voice-failed"
   | "voice-key-rejected"
   | "nothing-heard"
+  | "signup-closed"
+  | "setup-code-invalid"
 
 /** IPC cannot carry typed errors, so failures travel as plain values. */
 export type BridgeResult<A> =
@@ -282,6 +286,8 @@ export interface ScopeBotBridge {
   transcribe(input: Transcribe): Promise<BridgeResult<Transcript>>
   /** Empty when nobody is signed in. The token itself never reaches this side. */
   getAccount(): Promise<BridgeResult<Account | null>>
+  /** Whether the server needs setup and whether anyone may create a business on it (ADR 0028). */
+  getAuthOptions(): Promise<BridgeResult<AuthOptions>>
   register(input: Register): Promise<BridgeResult<Account>>
   login(input: Login): Promise<BridgeResult<Account>>
   joinTeam(input: JoinTeam): Promise<BridgeResult<Account>>

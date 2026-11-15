@@ -56,6 +56,8 @@ const accountColumns = `u.id, u.email, u.name, u.role, u.created_at, u.business_
 export class Accounts extends Context.Service<
   Accounts,
   {
+    /** A server with no business still needs setup (ADR 0028). */
+    readonly hasBusiness: Effect.Effect<boolean>
     /** False when the email is taken, and then nothing is created. */
     createBusiness(user: NewUser, businessName: string): Effect.Effect<boolean>
     /** False when the email is taken. */
@@ -108,6 +110,10 @@ export class Accounts extends Context.Service<
       }
 
       return Accounts.of({
+        hasBusiness: sql<Row>`SELECT EXISTS (SELECT 1 FROM businesses) AS found`.pipe(
+          Effect.map((rows) => rows[0]?.found === true),
+          Effect.orDie
+        ),
         createBusiness: (user, businessName) =>
           sql
             .withTransaction(

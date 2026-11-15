@@ -41,6 +41,7 @@ import { Auth } from "./Auth.ts"
 import { ApiRoutes } from "./Http.ts"
 import { InstagramRoutes } from "./InstagramRoutes.ts"
 import { AuthorizationLayer } from "./Security.ts"
+import { Signup } from "./Signup.ts"
 
 const DatabaseLayer = Layer.unwrap(Config.Redacted("DATABASE_URL").pipe(Effect.map(databaseLayer)))
 
@@ -139,6 +140,7 @@ const ReminderServices = Suggestions.layer.pipe(
 
 const AuthServices = AuthorizationLayer.pipe(
   Layer.provideMerge(Auth.layer),
+  Layer.provide(Signup.layerConfig),
   Layer.provide(AccountsLayer),
   Layer.provide(AgentServices)
 )

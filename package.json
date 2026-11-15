@@ -13,6 +13,7 @@
     "dev:desktop": "pnpm --filter @scope-bot/desktop dev",
     "start": "pnpm --filter @scope-bot/server start",
     "db:import": "pnpm --filter @scope-bot/server db:import",
+    "user:reset-password": "pnpm --filter @scope-bot/server user:reset-password",
     "build": "pnpm --filter @scope-bot/desktop build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

@@ -52,6 +52,7 @@ export const AuthApiHandlers = HttpApiBuilder.group(
     const auth = yield* Auth
 
     return handlers.handleAll({
+      options: () => auth.options,
       register: ({ payload }) => auth.register(payload),
       login: ({ payload }) => auth.login(payload),
       join: ({ payload }) => auth.join(payload)

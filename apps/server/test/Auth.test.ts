@@ -50,6 +50,7 @@ import { Auth } from "../src/Auth.ts"
 import { ApiRoutes } from "../src/Http.ts"
 import { InstagramRoutes } from "../src/InstagramRoutes.ts"
 import { AuthorizationLayer } from "../src/Security.ts"
+import { Signup } from "../src/Signup.ts"
 
 const model = Layer.succeed(
   ChatModel,
@@ -93,7 +94,12 @@ const domain = channels.pipe(
   Layer.provide(instagramPhone.layer)
 )
 
-const security = AuthorizationLayer.pipe(Layer.provideMerge(Auth.layer), Layer.provideMerge(Accounts.layer))
+// Every test makes a business of its own, so sign-up stays open here. Setup.test.ts covers a closed server.
+const security = AuthorizationLayer.pipe(
+  Layer.provideMerge(Auth.layer),
+  Layer.provide(Signup.layer({ open: true })),
+  Layer.provideMerge(Accounts.layer)
+)
 
 /** The real API on real PostgreSQL. Only the model is replaced. */
 const server = HttpRouter.serve(Layer.mergeAll(ApiRoutes, InstagramRoutes), {
@@ -137,6 +143,7 @@ layer(server, { timeout: "120 seconds", excludeTestServices: true })("Auth", (it
       const client = yield* anonymous
 
       assert.strictEqual((yield* client.system.health()).status, "ok")
+      assert.isTrue((yield* client.auth.options()).signupOpen, "The sign-in screen asks before anyone signs in")
 
       const failure = yield* client.contacts.list().pipe(Effect.flip)
       assert.strictEqual(failure._tag, "Unauthorized")

@@ -11,6 +11,7 @@ const bridge: ScopeBotBridge = {
   removeVoiceKey: () => ipcRenderer.invoke(Channels.removeVoiceKey),
   transcribe: (input) => ipcRenderer.invoke(Channels.transcribe, input),
   getAccount: () => ipcRenderer.invoke(Channels.getAccount),
+  getAuthOptions: () => ipcRenderer.invoke(Channels.getAuthOptions),
   register: (input) => ipcRenderer.invoke(Channels.register, input),
   login: (input) => ipcRenderer.invoke(Channels.login, input),
   joinTeam: (input) => ipcRenderer.invoke(Channels.joinTeam, input),

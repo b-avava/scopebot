@@ -8,7 +8,8 @@
     "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
     "start": "node --env-file-if-exists=../../.env src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "db:import": "node --env-file-if-exists=../../.env src/importFile.ts"
+    "db:import": "node --env-file-if-exists=../../.env src/importFile.ts",
+    "user:reset-password": "node --env-file-if-exists=../../.env src/resetPassword.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

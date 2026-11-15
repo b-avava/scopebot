@@ -64,7 +64,9 @@ const errorMessages: Record<BridgeError, string> = {
   "voice-not-configured": "Speaking needs an ElevenLabs key. An owner or admin adds it in Providers.",
   "voice-failed": "ElevenLabs didn't answer, or didn't accept the key. Try again, or check the key in Providers.",
   "voice-key-rejected": "ElevenLabs didn't accept the key. An owner or admin checks it in Providers.",
-  "nothing-heard": "Couldn't make out any words in the recording."
+  "nothing-heard": "Couldn't make out any words in the recording.",
+  "signup-closed": "This server is already set up. Ask its owner or an admin for an invite.",
+  "setup-code-invalid": "The setup code is wrong. Copy it again from the server's log; a restart makes a new one."
 }
 
 export const errorMessage = (error: BridgeError) => errorMessages[error]

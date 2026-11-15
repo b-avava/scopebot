@@ -61,6 +61,7 @@ const main = Effect.gen(function* () {
 
   ipcMain.handle(Channels.serverStatus, () => Effect.runPromise(server.status))
   ipcMain.handle(Channels.getAccount, () => Effect.runPromise(server.getAccount))
+  ipcMain.handle(Channels.getAuthOptions, () => Effect.runPromise(server.getAuthOptions))
   ipcMain.handle(Channels.register, (_, input: unknown) => Effect.runPromise(server.register(input)))
   ipcMain.handle(Channels.login, (_, input: unknown) => Effect.runPromise(server.login(input)))
   ipcMain.handle(Channels.joinTeam, (_, input: unknown) => Effect.runPromise(server.joinTeam(input)))

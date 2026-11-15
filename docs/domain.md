@@ -12,6 +12,8 @@ A tenant. It holds the profile, the provider preferences and everything in the C
 
 A human who signs in, with `email`, `name` and a `role`: `owner`, `admin` or `member`. A user belongs to one business, and an email is unique across all of them. Owners and admins manage the team, API keys and the business profile. Employees are agents, not users.
 
+The first business on a server is created with the setup code from the server's log. After that, sign-up is closed and people join with an invite, unless the server runs with `SIGNUP=open` (see ADR 0028).
+
 ### Session and invite
 
 A session is a random token that lasts 30 days from the last use. An invite is a one-time code that lasts 7 days and adds a user with a role. For both, only a hash is stored.
