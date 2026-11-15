@@ -24,6 +24,7 @@ import {
   ApprovalId,
   ApprovalNotPending,
   ApprovalRequest,
+  AuthOptions,
   AuthSession,
   BusinessProfile,
   CalendarOff,
@@ -118,8 +119,10 @@ import {
   ServiceId,
   ServiceNotFound,
   ServicePreview,
+  SetupCodeInvalid,
   SideAnswer,
   SideQuestion,
+  SignupClosed,
   Slot,
   SlotQuery,
   Specialist,
@@ -181,10 +184,13 @@ export class SystemApi extends HttpApiGroup.make("system").add(
 
 export class AuthApi extends HttpApiGroup.make("auth")
   .add(
+    HttpApiEndpoint.get("options", "/options", {
+      success: AuthOptions
+    }),
     HttpApiEndpoint.post("register", "/register", {
       payload: Register,
       success: AuthSession,
-      error: EmailTaken
+      error: [EmailTaken, SignupClosed, SetupCodeInvalid]
     }),
     HttpApiEndpoint.post("login", "/login", {
       payload: Login,

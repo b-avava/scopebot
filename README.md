@@ -37,7 +37,7 @@ pnpm install
 pnpm dev               # server on http://localhost:3000 + desktop app window
 ```
 
-The comments in `.env.example` explain each setting. More commands and details are in [CONTRIBUTING.md](CONTRIBUTING.md).
+On the first start the server writes a setup code to its log: enter it in the app to create your business and become its owner. Your team then joins with invites. The comments in `.env.example` explain each setting. More commands and details are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Documentation
 

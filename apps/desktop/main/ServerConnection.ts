@@ -98,6 +98,8 @@ const errorCodes: Record<string, BridgeError> = {
   WrongCredentials: "wrong-credentials",
   TooManyAttempts: "too-many-attempts",
   EmailTaken: "email-taken",
+  SignupClosed: "signup-closed",
+  SetupCodeInvalid: "setup-code-invalid",
   Forbidden: "forbidden",
   InviteInvalid: "invite-invalid",
   DraftNotFound: "gone",
@@ -220,6 +222,7 @@ export class ServerConnection extends Context.Service<
   {
     readonly status: Effect.Effect<ServerStatus>
     readonly getAccount: Bridged<"getAccount">
+    readonly getAuthOptions: Bridged<"getAuthOptions">
     register(input: unknown): Bridged<"register">
     login(input: unknown): Bridged<"login">
     joinTeam(input: unknown): Bridged<"joinTeam">
@@ -397,6 +400,7 @@ export class ServerConnection extends Context.Service<
                 )
           )
         ),
+        getAuthOptions: toResult(client.auth.options()),
         register: (input) =>
           toResult(
             decodeRegister(input).pipe(Effect.flatMap((payload) => keepSession(client.auth.register({ payload }))))

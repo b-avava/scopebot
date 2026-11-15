@@ -218,6 +218,7 @@ Details live in `docs/domain.md`. Update it whenever the model changes.
 - Code signing for Windows/macOS builds; auto-update via signed releases.
 - Secrets live only on the server. The desktop app never holds LLM or provider API keys.
 - Multi-tenant isolation: every query is scoped by business (tenant) ID, and composite foreign keys keep links inside one business.
+- A new server is set up with a one-time code from its own log, and sign-up closes after that (ADR 0028).
 - Passwords are hashed with scrypt. Only hashes of session tokens and invite codes are stored, and the desktop app keeps its token in the main process.
 - API keys people add are encrypted at rest. A server reachable from outside needs TLS in front of it.
 - Personal and sensitive data: encryption at rest, access logs, data export and deletion on request.

@@ -15,8 +15,11 @@ pnpm dev:server   # server only
 pnpm dev:desktop  # desktop app only (shows "Server offline" without a server)
 pnpm check        # lint + typecheck + tests, some of them on PostgreSQL
 pnpm db:import <email>  # moves the old JSON data files into that account's business
+pnpm user:reset-password <email>  # prints a new password and signs that person out everywhere
 pnpm lint:fix     # format and apply safe lint fixes
 ```
+
+On an empty database the server writes a setup code to its log. The app asks for it to create the first business and its owner; after that, people join with invites unless `SIGNUP=open` (ADR 0028).
 
 The first `pnpm dev` downloads the Electron binary, so it takes longer. Stopping either process in `pnpm dev` stops both.
 

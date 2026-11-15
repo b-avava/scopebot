@@ -4,6 +4,7 @@ import type { CurrentSession } from "@scope-bot/contracts"
 import { Accounts, CurrentBusiness, type NewUser } from "@scope-bot/db"
 import {
   type Account,
+  type AuthOptions,
   type AuthSession,
   BusinessId,
   type ChangePassword,
@@ -14,7 +15,10 @@ import {
   type JoinTeam,
   type Login,
   type NewInvite,
+  normalizeEmail,
   type Register,
+  SetupCodeInvalid,
+  SignupClosed,
   TooManyAttempts,
   Unauthorized,
   type User,
@@ -22,8 +26,9 @@ import {
   UserNotFound,
   WrongCredentials
 } from "@scope-bot/domain"
-import { Clock, Context, Effect, Layer, Option } from "effect"
+import { Clock, Context, Effect, Layer, Option, Ref, Semaphore } from "effect"
 import { hashPassword, verifyPassword } from "./Passwords.ts"
+import { Signup, sameSetupCode } from "./Signup.ts"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const SESSION_MS = 30 * DAY_MS
@@ -39,8 +44,6 @@ const newSecret = () => randomBytes(SECRET_BYTES).toString("base64url")
 /** Tokens are long and random, so a plain hash is enough. A stolen database then holds no usable session. */
 const hashSecret = (secret: string) => createHash("sha256").update(secret).digest("hex")
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase()
-
 const dateIn = (millis: number) => Clock.currentTimeMillis.pipe(Effect.map((now) => new Date(now + millis)))
 
 const canManageTeam = (user: User) => user.role === "owner" || user.role === "admin"
@@ -49,7 +52,9 @@ const canManageTeam = (user: User) => user.role === "owner" || user.role === "ad
 export class Auth extends Context.Service<
   Auth,
   {
-    register(input: Register): Effect.Effect<AuthSession, EmailTaken>
+    options: Effect.Effect<AuthOptions>
+    /** Creates a business and its owner: the first one with the setup code, others only while sign-up is open. */
+    register(input: Register): Effect.Effect<AuthSession, EmailTaken | SignupClosed | SetupCodeInvalid>
     login(input: Login): Effect.Effect<AuthSession, WrongCredentials | TooManyAttempts>
     join(input: JoinTeam): Effect.Effect<AuthSession, EmailTaken | InviteInvalid>
     verify(token: string): Effect.Effect<Account, Unauthorized>
@@ -66,8 +71,22 @@ export class Auth extends Context.Service<
     Effect.gen(function* () {
       const accounts = yield* Accounts
       const deals = yield* Deals
+      const signup = yield* Signup
       // Hashed once, so a login for an unknown email takes as long as a wrong password.
       const decoyHash = yield* hashPassword(newSecret())
+
+      // Only whoever reads the log of a new server can create its first business (ADR 0028).
+      const setupCode = yield* Ref.make(Option.none<string>())
+      const setupLock = yield* Semaphore.make(1)
+      if (signup.open) {
+        yield* Effect.logWarning("Sign-up is open: anyone who reaches this server can create a business on it.")
+      } else if (!(yield* accounts.hasBusiness)) {
+        const code = yield* signup.newSetupCode
+        yield* Ref.set(setupCode, Option.some(code))
+        yield* Effect.logWarning(
+          `This server is not set up yet. Open Scope Bot and create the owner with the setup code ${code}`
+        )
+      }
 
       const openSession = Effect.fn("Auth.openSession")(function* (account: Account) {
         const token = newSecret()
@@ -85,22 +104,39 @@ export class Auth extends Context.Service<
           )
         )
 
+      const createOwner = Effect.fn("Auth.createOwner")(function* (input: Register) {
+        const user: NewUser = {
+          id: UserId.make(crypto.randomUUID()),
+          businessId: BusinessId.make(crypto.randomUUID()),
+          email: normalizeEmail(input.email),
+          name: input.name.trim(),
+          passwordHash: yield* hashPassword(input.password),
+          role: "owner"
+        }
+        if (!(yield* accounts.createBusiness(user, input.businessName.trim()))) {
+          return yield* Effect.fail(new EmailTaken())
+        }
+        yield* deals.pipelines.pipe(Effect.provideService(CurrentBusiness, user.businessId))
+        return yield* openSession(yield* accountOf(user.id))
+      })
+
+      /** One at a time, so two people with the code cannot both become the first owner. */
+      const setUp = Effect.fn("Auth.setUp")(function* (input: Register) {
+        if (yield* accounts.hasBusiness) return yield* Effect.fail(new SignupClosed())
+        const expected = yield* Ref.get(setupCode)
+        if (Option.isNone(expected) || !sameSetupCode(input.setupCode ?? "", expected.value)) {
+          return yield* Effect.fail(new SetupCodeInvalid())
+        }
+        const session = yield* createOwner(input)
+        yield* Ref.set(setupCode, Option.none())
+        return session
+      })
+
       return Auth.of({
-        register: Effect.fn("Auth.register")(function* (input) {
-          const user: NewUser = {
-            id: UserId.make(crypto.randomUUID()),
-            businessId: BusinessId.make(crypto.randomUUID()),
-            email: normalizeEmail(input.email),
-            name: input.name.trim(),
-            passwordHash: yield* hashPassword(input.password),
-            role: "owner"
-          }
-          if (!(yield* accounts.createBusiness(user, input.businessName.trim()))) {
-            return yield* Effect.fail(new EmailTaken())
-          }
-          yield* deals.pipelines.pipe(Effect.provideService(CurrentBusiness, user.businessId))
-          return yield* openSession(yield* accountOf(user.id))
-        }),
+        options: accounts.hasBusiness.pipe(
+          Effect.map((hasBusiness) => ({ needsSetup: !hasBusiness, signupOpen: signup.open }))
+        ),
+        register: (input) => (signup.open ? createOwner(input) : setupLock.withPermits(1)(setUp(input))),
         login: Effect.fn("Auth.login")(function* (input) {
           const email = normalizeEmail(input.email)
           const since = yield* dateIn(-FAILURE_WINDOW_MS)

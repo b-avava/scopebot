@@ -11,6 +11,9 @@ export const UserRole = Schema.Literals(["owner", "admin", "member"])
 export type UserRole = typeof UserRole.Type
 
 export const MIN_PASSWORD_LENGTH = 10
+
+/** One account per address, whatever its case or the spaces around it. */
+export const normalizeEmail = (email: string) => email.trim().toLowerCase()
 const MAX_PASSWORD_LENGTH = 200
 
 const Email = Schema.String.check(Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/), Schema.isMaxLength(254))
@@ -48,9 +51,20 @@ export const Register = Schema.Struct({
   businessName: Schema.NonEmptyString,
   name: Schema.NonEmptyString,
   email: Email,
-  password: NewPassword
+  password: NewPassword,
+  /** From the server's log. Needed to set up a new server while sign-up is closed (ADR 0028). */
+  setupCode: Schema.optionalKey(Schema.String)
 })
 export type Register = typeof Register.Type
+
+/** Which ways in the sign-in screen offers. Anyone may ask, before signing in. */
+export const AuthOptions = Schema.Struct({
+  /** The server has no business yet, so the first one is created with the setup code. */
+  needsSetup: Schema.Boolean,
+  /** Anyone may create a business, not only the first one. */
+  signupOpen: Schema.Boolean
+})
+export type AuthOptions = typeof AuthOptions.Type
 
 export const Login = Schema.Struct({
   email: Schema.String,
@@ -103,6 +117,16 @@ export class TooManyAttempts extends Schema.TaggedError<TooManyAttempts>()(
 ) {}
 
 export class EmailTaken extends Schema.TaggedError<EmailTaken>()("EmailTaken", {}, { httpApiStatus: 409 }) {}
+
+/** The server is set up and sign-up is closed, so people join with an invite instead. */
+export class SignupClosed extends Schema.TaggedError<SignupClosed>()("SignupClosed", {}, { httpApiStatus: 403 }) {}
+
+/** Missing or wrong. A restart of the server makes a new one. */
+export class SetupCodeInvalid extends Schema.TaggedError<SetupCodeInvalid>()(
+  "SetupCodeInvalid",
+  {},
+  { httpApiStatus: 403 }
+) {}
 
 /** Signed in, but this role may not do it. */
 export class Forbidden extends Schema.TaggedError<Forbidden>()("Forbidden", {}, { httpApiStatus: 403 }) {}
