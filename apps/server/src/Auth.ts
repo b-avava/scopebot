@@ -31,7 +31,8 @@ import { hashPassword, verifyPassword } from "./Passwords.ts"
 import { Signup, sameSetupCode } from "./Signup.ts"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const SESSION_MS = 30 * DAY_MS
+/** A session ends this long after its last use. */
+export const SESSION_MS = 30 * DAY_MS
 const INVITE_MS = 7 * DAY_MS
 /** A session is extended at most this often, so reading does not write on every request. */
 const EXTEND_AFTER_MS = 60 * 60 * 1000
@@ -57,7 +58,10 @@ export class Auth extends Context.Service<
     register(input: Register): Effect.Effect<AuthSession, EmailTaken | SignupClosed | SetupCodeInvalid>
     login(input: Login): Effect.Effect<AuthSession, WrongCredentials | TooManyAttempts>
     join(input: JoinTeam): Effect.Effect<AuthSession, EmailTaken | InviteInvalid>
-    verify(token: string): Effect.Effect<Account, Unauthorized>
+    /** `extendedUntil` is set when this check moved the end of the session, so a cookie can follow it. */
+    verify(
+      token: string
+    ): Effect.Effect<{ readonly account: Account; readonly extendedUntil: Date | null }, Unauthorized>
     logout(session: CurrentSession["Service"]): Effect.Effect<void>
     /** Signs out every other device, in case the old password leaked. */
     changePassword(session: CurrentSession["Service"], input: ChangePassword): Effect.Effect<void, WrongCredentials>
@@ -177,10 +181,12 @@ export class Auth extends Context.Service<
           const found = yield* accounts.findSession(tokenHash)
           if (Option.isNone(found)) return yield* Effect.fail(new Unauthorized())
           const now = yield* Clock.currentTimeMillis
-          if (now - found.value.lastUsedAt.getTime() > EXTEND_AFTER_MS) {
-            yield* accounts.extendSession(tokenHash, new Date(now + SESSION_MS))
+          if (now - found.value.lastUsedAt.getTime() <= EXTEND_AFTER_MS) {
+            return { account: found.value.account, extendedUntil: null }
           }
-          return found.value.account
+          const extendedUntil = new Date(now + SESSION_MS)
+          yield* accounts.extendSession(tokenHash, extendedUntil)
+          return { account: found.value.account, extendedUntil }
         }),
         logout: (session) => accounts.removeSession(hashSecret(session.token)),
         changePassword: Effect.fn("Auth.changePassword")(function* (session, input) {

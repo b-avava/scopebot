@@ -16,7 +16,7 @@ The first business on a server is created with the setup code from the server's 
 
 ### Session and invite
 
-A session is a random token that lasts 30 days from the last use. An invite is a one-time code that lasts 7 days and adds a user with a role. For both, only a hash is stored.
+A session is a random token that lasts 30 days from the last use. The desktop app sends it as a bearer token; a browser keeps it in the `scope_bot_session` cookie, which moves with the session and is deleted on sign-out (see ADR 0029). An invite is a one-time code that lasts 7 days and adds a user with a role. For both, only a hash is stored.
 
 ## CRM
 

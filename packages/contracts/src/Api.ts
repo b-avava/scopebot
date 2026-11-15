@@ -167,12 +167,17 @@ export class CurrentSession extends Context.Service<
   { readonly account: Account; readonly token: string }
 >()("@scope-bot/contracts/CurrentSession") {}
 
-/** Everything except signing in needs a session. */
+/** The session of a browser, which its page cannot read (ADR 0029). */
+export const SESSION_COOKIE = "scope_bot_session"
+
+export const sessionCookie = HttpApiSecurity.apiKey({ key: SESSION_COOKIE, in: "cookie" })
+
+/** Everything except signing in needs a session: a bearer token from the desktop app, or the cookie of a browser. */
 export class Authorization extends HttpApiMiddleware.Service<Authorization, { provides: CurrentSession }>()(
   "@scope-bot/contracts/Authorization",
   {
     error: Unauthorized,
-    security: { bearer: HttpApiSecurity.bearer }
+    security: { bearer: HttpApiSecurity.bearer, cookie: sessionCookie }
   }
 ) {}
 
@@ -204,6 +209,27 @@ export class AuthApi extends HttpApiGroup.make("auth")
     })
   )
   .prefix("/auth") {}
+
+/** Signing in from a browser: the session goes into a cookie, never into the answer (ADR 0029). */
+export class WebAuthApi extends HttpApiGroup.make("webAuth")
+  .add(
+    HttpApiEndpoint.post("register", "/register", {
+      payload: Register,
+      success: Account,
+      error: [EmailTaken, SignupClosed, SetupCodeInvalid]
+    }),
+    HttpApiEndpoint.post("login", "/login", {
+      payload: Login,
+      success: Account,
+      error: [WrongCredentials, TooManyAttempts]
+    }),
+    HttpApiEndpoint.post("join", "/join", {
+      payload: JoinTeam,
+      success: Account,
+      error: [EmailTaken, InviteInvalid]
+    })
+  )
+  .prefix("/auth/web") {}
 
 export class AccountApi extends HttpApiGroup.make("account")
   .add(
@@ -970,6 +996,7 @@ export class CalendarApi extends HttpApiGroup.make("calendar")
 export class Api extends HttpApi.make("scope-bot")
   .add(SystemApi)
   .add(AuthApi)
+  .add(WebAuthApi)
   .add(AccountApi)
   .add(TeamApi)
   .add(BusinessApi)
