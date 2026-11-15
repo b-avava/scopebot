@@ -55,7 +55,7 @@ These are non-negotiable and should guide every design decision.
 ### Key decisions
 
 - **All agents run on the server.** Agents must work 24/7, receive webhooks and serve multiple users. The web interface and the desktop app are clients, never the place where agent logic lives.
-- **Web interface first.** The server serves the interface to any browser, so people need nothing installed. The desktop app shows the same interface and adds what a browser cannot: notifications and the local executor (see ADR 0027). The diagram above still shows only the desktop app, because the web interface is not built yet.
+- **Web interface first.** The server serves the interface to any browser, so people need nothing installed. The desktop app shows the same interface and adds what a browser cannot: notifications and the local executor (see ADR 0027). The browser keeps its session in a cookie, and the server serves the built page from `/` with a strict CSP (ADR 0029). The diagram above shows only the desktop app; a browser takes its place with the same interface.
 - **The desktop main process is a thin executor.** The server sends commands ("list files in allowed folder", "take screenshot", "click element"), the executor performs them and returns results. LLM calls, API keys, agent logic and logs stay on the server.
 - **Self-hosted first.** Every business runs its own server, in its office or on a rented machine (Docker Compose). Setup must be possible without help from the authors. Avoid hard dependencies on cloud-only services; a service that needs an account, such as a channel or an LLM provider, uses the business's own account.
 - **One language end to end.** TypeScript everywhere; Effect on server and in Electron main; shared schemas across all layers.

@@ -30,6 +30,7 @@ import {
 import { Clock, Effect, Layer } from "effect"
 import { HttpApiBuilder } from "effect/http-api"
 import { Auth, SESSION_MS } from "./Auth.ts"
+import { SecurityHeaders } from "./WebRoutes.ts"
 import { CrossSiteGuard, expireSessionCookie, setSessionCookie } from "./WebSession.ts"
 
 /** Settings of the whole business are for owners and admins. */
@@ -561,5 +562,6 @@ export const ApiHandlers = Layer.mergeAll(
 
 export const ApiRoutes = Layer.mergeAll(
   HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(Layer.provide(ApiHandlers)),
-  CrossSiteGuard
+  CrossSiteGuard,
+  SecurityHeaders
 )

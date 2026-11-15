@@ -42,6 +42,7 @@ import { ApiRoutes } from "./Http.ts"
 import { InstagramRoutes } from "./InstagramRoutes.ts"
 import { AuthorizationLayer } from "./Security.ts"
 import { Signup } from "./Signup.ts"
+import { WebRoutes } from "./WebRoutes.ts"
 
 const DatabaseLayer = Layer.unwrap(Config.Redacted("DATABASE_URL").pipe(Effect.map(databaseLayer)))
 
@@ -145,7 +146,7 @@ const AuthServices = AuthorizationLayer.pipe(
   Layer.provide(AgentServices)
 )
 
-const Main = HttpRouter.serve(Layer.mergeAll(ApiRoutes, InstagramRoutes)).pipe(
+const Main = HttpRouter.serve(Layer.mergeAll(ApiRoutes, InstagramRoutes, WebRoutes)).pipe(
   Layer.provide(AuthServices),
   Layer.provide(ReminderServices),
   Layer.provide(ChannelServices),

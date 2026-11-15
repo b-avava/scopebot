@@ -34,10 +34,11 @@ Requires Node.js 24+, pnpm 11 and PostgreSQL 15 or newer.
 ```sh
 cp .env.example .env   # set DATABASE_URL, SCOPE_BOT_SECRET and the LLM settings
 pnpm install
-pnpm dev               # server on http://localhost:3000 + desktop app window
+pnpm build:web         # builds the interface the server shows in a browser
+pnpm dev:server        # then open http://localhost:3000
 ```
 
-On the first start the server writes a setup code to its log: enter it in the app to create your business and become its owner. Your team then joins with invites. The comments in `.env.example` explain each setting. More commands and details are in [CONTRIBUTING.md](CONTRIBUTING.md).
+`pnpm dev` starts the server with the desktop app instead. On the first start the server writes a setup code to its log: enter it in the browser or the app to create your business and become its owner. Your team then joins with invites. The comments in `.env.example` explain each setting. More commands and details are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Documentation
 
