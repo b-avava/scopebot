@@ -107,6 +107,7 @@ scope-bot/
 ├─ apps/
 │  ├─ server/            # HTTP API, RPC server, agent runtime entrypoint, workers
 │  └─ desktop/
+│     ├─ client/         # API client shared by Electron main and the browser (Effect, no Node)
 │     ├─ main/           # Electron main process (Effect): RPC client, executor, OS integration
 │     ├─ preload/        # Typed, minimal IPC bridge
 │     └─ renderer/       # React UI
