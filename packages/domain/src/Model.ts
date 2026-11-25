@@ -5,10 +5,18 @@ export const ReasoningEffort = Schema.Literals(["default", "low", "medium", "hig
 export type ReasoningEffort = typeof ReasoningEffort.Type
 
 /**
- * Where a model runs: `api` is the key in `.env`, `claude-code` and `codex` are
- * CLIs on the machine that runs the server, the rest take a key added in the app.
+ * Where a model runs: `api` is the key in `.env`, `claude-code`, `codex` and `opencode`
+ * are CLIs on the machine that runs the server, the rest take a key added in the app.
  */
-export const ProviderId = Schema.Literals(["api", "claude-code", "codex", "openrouter", "deepseek", "custom"])
+export const ProviderId = Schema.Literals([
+  "api",
+  "claude-code",
+  "codex",
+  "opencode",
+  "openrouter",
+  "deepseek",
+  "custom"
+])
 export type ProviderId = typeof ProviderId.Type
 
 export const ModelChoice = Schema.Struct({

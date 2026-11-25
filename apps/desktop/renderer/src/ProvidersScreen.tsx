@@ -350,7 +350,17 @@ const ProviderDetail = ({
 
       {provider.status === "failed" && <p className="text-[13px] text-destructive">{provider.hint}</p>}
       {hasSignIn(provider) && <AccountSection provider={provider} usedBy={users.map((user) => user.name).join(", ")} />}
-      <KeySection provider={provider} />
+      {provider.id === "opencode" && (
+        <Section title="Account">
+          <Card>
+            <Row
+              title="Providers on this computer"
+              hint="OpenCode uses the providers signed in to it. Run `opencode auth login` on the server to add one."
+            />
+          </Card>
+        </Section>
+      )}
+      {provider.id !== "opencode" && <KeySection provider={provider} />}
       {hasSignIn(provider) && provider.detail !== "" && (
         <Section title="Runtime">
           <Card>

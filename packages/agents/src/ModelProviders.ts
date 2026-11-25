@@ -16,6 +16,7 @@ import { makeClaudeCodeProvider } from "./ClaudeCodeProvider.ts"
 import { makeCodexProvider } from "./CodexProvider.ts"
 import { LocalCli } from "./LocalCli.ts"
 import { openAiCompatibleModel } from "./OpenAiCompatibleChatModel.ts"
+import { makeOpenCodeProvider } from "./OpenCodeProvider.ts"
 
 const CATALOG_TTL = "30 seconds"
 const MAX_CACHED_BUSINESSES = 1000
@@ -187,6 +188,7 @@ export class ModelProviders extends Context.Service<
         {
           "claude-code": makeClaudeCodeProvider(cli, keys),
           codex: makeCodexProvider(cli, keys),
+          opencode: makeOpenCodeProvider(cli),
           api: apiProvider(model),
           ...Object.fromEntries(keyProviders.map((options) => [options.id, makeKeyProvider(options, keys, client)]))
         },
