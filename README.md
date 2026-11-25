@@ -21,7 +21,7 @@ Scope Bot is not a commercial service. There is no hosted version to sign up for
 - **Calendar (optional).** Specialists, rooms and equipment with working hours. Employees find free times, book, move and cancel, and clients get reminders in the chat they wrote from.
 - **Activity log.** Everything an employee did, why, and who approved it.
 - **Team accounts.** Owners, admins and members, each seeing what their role allows.
-- **Your choice of model.** Anthropic, or any OpenAI-style API (OpenAI, OpenRouter, DeepSeek and others). For trying things out, Claude Code or Codex signed in on the same computer.
+- **Your choice of model.** Anthropic, or any OpenAI-style API (OpenAI, OpenRouter, DeepSeek and others). For trying things out, Claude Code, Codex or OpenCode signed in on the same computer.
 
 ## Status
 

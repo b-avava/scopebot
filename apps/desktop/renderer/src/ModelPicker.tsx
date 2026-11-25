@@ -5,7 +5,7 @@ import {
   MorphPopoverContent,
   MorphPopoverTrigger
 } from "@scope-bot/ui/components/motion/popover-morph.tsx"
-import { Check, ChevronsUpDown, KeyRound, Plus, SlidersHorizontal } from "lucide-react"
+import { Check, ChevronsUpDown, KeyRound, Plus, SlidersHorizontal, SquareTerminal } from "lucide-react"
 import { Fragment, type ReactElement, type ReactNode, useState } from "react"
 import { useModels } from "./ModelsContext.tsx"
 
@@ -20,6 +20,7 @@ const logos: Partial<Record<ProviderId, string>> = {
 export const ProviderIcon = ({ provider, size = 18 }: { readonly provider: ProviderId; readonly size?: number }) => {
   const path = logos[provider]
   if (provider === "custom") return <SlidersHorizontal size={size} aria-hidden />
+  if (provider === "opencode") return <SquareTerminal size={size} aria-hidden />
   return path === undefined ? (
     <KeyRound size={size} aria-hidden />
   ) : (
